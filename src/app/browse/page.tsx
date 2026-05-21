@@ -8,7 +8,7 @@ import Row from "@/components/Row";
 import MemoryCard from "@/components/MemoryCard";
 import InfoModal from "@/components/InfoModal";
 import MediaPlayer from "@/components/MediaPlayer";
-import { Play, Info, Plus, Check, Loader2, Sparkles, FolderHeart } from "lucide-react";
+import { Play, Info, Plus, Check, Loader2, Sparkles, FolderHeart, AlertTriangle, X } from "lucide-react";
 import axios from "axios";
 import { DbSeason, DbEpisode } from "@/types";
 
@@ -23,6 +23,9 @@ export default function BrowsePage() {
   const searchParams = useSearchParams();
   const searchQuery = searchParams.get("q") || "";
   const filterMyList = searchParams.get("myList") === "true";
+
+  const [showLowStorageModal, setShowLowStorageModal] = useState(false);
+  const [recommendedPlan, setRecommendedPlan] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
@@ -86,6 +89,47 @@ export default function BrowsePage() {
       }
     }
   }, [activeProfile]);
+
+  useEffect(() => {
+    const checkStorage = async () => {
+      if (!dbUser?.id) return;
+      
+      const currentPlan = (dbUser.planName || "free").toLowerCase();
+      if (currentPlan === "elite") return;
+
+      if (sessionStorage.getItem("dismissed_low_storage_warning") === "true") return;
+
+      try {
+        const res = await axios.get(`/api/storage?userId=${dbUser.id}`);
+        const { limitBytes, totalSizeBytes } = res.data;
+        const remainingMb = (limitBytes - totalSizeBytes) / (1024 * 1024);
+        
+        if (remainingMb <= 50) {
+          if (currentPlan === "free" || currentPlan === "starter") {
+            setRecommendedPlan("family");
+            setShowLowStorageModal(true);
+          } else if (currentPlan === "family") {
+            setRecommendedPlan("elite");
+            setShowLowStorageModal(true);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking storage for warning prompt:", err);
+      }
+    };
+
+    checkStorage();
+  }, [dbUser]);
+
+  const handleRemindLater = () => {
+    setShowLowStorageModal(false);
+    sessionStorage.setItem("dismissed_low_storage_warning", "true");
+  };
+
+  const handleUpgradeNow = () => {
+    setShowLowStorageModal(false);
+    router.push(`/settings?tab=subscription&plan=${recommendedPlan}`);
+  };
 
   const handlePlayHero = () => {
     if (data.hero) {
@@ -392,6 +436,93 @@ export default function BrowsePage() {
       {/* LAYOUT FLOATING PORTALS */}
       <InfoModal />
       <MediaPlayer />
+
+      {/* STORAGE WARNING MODAL */}
+      {showLowStorageModal && (
+        <div 
+          onClick={handleRemindLater}
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-md select-none font-sans animate-fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-[480px] bg-[#181818] rounded-xl border border-white/10 p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-zoom-in text-white"
+          >
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#E50914] rounded-t-xl"></div>
+            
+            <button
+              onClick={handleRemindLater}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3.5 mb-5">
+              <div className="w-10 h-10 rounded-full bg-[#E50914]/15 border border-[#E50914]/30 flex items-center justify-center text-[#E50914] flex-shrink-0 shadow-inner">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-wider text-white">Vault Space Critical</h3>
+                <p className="text-[10px] text-netflix-red font-bold tracking-widest uppercase">Less than 50 MB Remaining</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <p className="text-sm text-white/70 leading-relaxed font-semibold">
+                Your memory vault is running out of cloud storage space. Upgrade to a higher tier now to continue uploading and archiving your high-definition video collections.
+              </p>
+
+              {/* Recommended plan highlight */}
+              <div className="bg-[#222] border border-white/5 rounded-xl p-5 space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-netflix-red/5 rounded-full filter blur-2xl pointer-events-none"></div>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[9px] font-black tracking-widest text-[#E50914] uppercase bg-[#E50914]/10 border border-[#E50914]/20 px-2 py-0.5 rounded">RECOMMENDED PLAN</span>
+                    <h4 className="text-base font-bold text-white mt-1">
+                      {recommendedPlan === "family" ? "Family Circle" : "Archivist Elite"}
+                    </h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-black text-white">
+                      {recommendedPlan === "family" ? "₹250" : "₹350"}
+                    </span>
+                    <span className="text-[10px] text-white/40 font-bold block">/ Month</span>
+                  </div>
+                </div>
+                <div className="border-t border-white/5 pt-2 text-xs text-white/60 space-y-1.5 font-medium">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#E50914]" />
+                    <span>Expanded Storage: <strong>{recommendedPlan === "family" ? "5 GB" : "7 GB"}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#E50914]" />
+                    <span>Profiles: <strong>{recommendedPlan === "family" ? "Up to 6" : "Unlimited"}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#E50914]" />
+                    <span>Resolution: <strong>{recommendedPlan === "family" ? "4K Ultra HD" : "Uncompressed HD"}</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-white/5">
+                <button
+                  onClick={handleRemindLater}
+                  className="w-full sm:w-1/2 py-2.5 rounded border border-white/10 hover:border-white/20 hover:bg-white/5 text-white/80 hover:text-white font-bold text-xs uppercase tracking-widest transition-all cursor-pointer text-center"
+                >
+                  Remind Me Later
+                </button>
+                <button
+                  onClick={handleUpgradeNow}
+                  className="w-full sm:w-1/2 py-2.5 rounded bg-netflix-red hover:bg-netflix-red-hover text-white font-bold text-xs uppercase tracking-widest transition-all shadow cursor-pointer text-center"
+                >
+                  Upgrade Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

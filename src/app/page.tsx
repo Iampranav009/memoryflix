@@ -179,6 +179,56 @@ export default function RootLandingPage() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const autoCheckoutTriggered = useRef(false);
 
+  const PLAN_RANKS: Record<string, number> = {
+    free: 0,
+    starter: 1,
+    family: 2,
+    elite: 3
+  };
+
+  const getPlanButtonDetails = (planKey: string) => {
+    const isSelected = selectedPlan === planKey;
+    if (!dbUser) {
+      const capitalizedName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+      return {
+        disabled: false,
+        text: planKey === "free" ? "Select Free" : `Upgrade to ${capitalizedName}`,
+        classes: isSelected
+          ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer"
+          : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+      };
+    }
+
+    const currentPlan = dbUser.planName || "free";
+    const currentRank = PLAN_RANKS[currentPlan.toLowerCase()] ?? 0;
+    const targetRank = PLAN_RANKS[planKey.toLowerCase()] ?? 0;
+
+    if (currentPlan.toLowerCase() === planKey.toLowerCase()) {
+      return {
+        disabled: true,
+        text: "Active Plan",
+        classes: "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
+      };
+    }
+
+    if (targetRank < currentRank) {
+      return {
+        disabled: true,
+        text: "Downgrade Unavailable",
+        classes: "bg-zinc-800/50 border border-zinc-700/20 text-zinc-500 cursor-not-allowed opacity-50"
+      };
+    }
+
+    const capitalizedName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+    return {
+      disabled: checkoutLoading,
+      text: checkoutLoading && selectedPlan === planKey ? "Processing..." : `Upgrade to ${capitalizedName}`,
+      classes: isSelected 
+        ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" 
+        : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+    };
+  };
+
   // Auto-trigger checkout if redirected back with plan context
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -389,6 +439,15 @@ export default function RootLandingPage() {
           </div>
           
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                const element = document.getElementById("pricing");
+                element?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="px-4 py-2 rounded bg-transparent hover:bg-white/10 border border-white/20 text-white text-sm font-bold tracking-wide transition-all duration-200 cursor-pointer hover:scale-105 active:scale-95"
+            >
+              Pricing
+            </button>
             {dbUser ? (
               <button
                 onClick={() => router.push("/browse")}
@@ -1107,14 +1166,16 @@ export default function RootLandingPage() {
                 </ul>
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("free"); }}
-                  disabled={dbUser?.planName === "free"}
+                  disabled={getPlanButtonDetails("free").disabled}
                   className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                    dbUser?.planName === "free"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
-                      : selectedPlan === "free" ? "bg-netflix-red text-white hover:bg-netflix-red-hover" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10"
+                    getPlanButtonDetails("free").classes
                   }`}
                 >
-                  {dbUser?.planName === "free" ? "Active Plan" : "Select Free"}
+                  {checkoutLoading && selectedPlan === "free" ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  ) : (
+                    getPlanButtonDetails("free").text
+                  )}
                 </button>
               </div>
             </div>
@@ -1149,19 +1210,15 @@ export default function RootLandingPage() {
                 </ul>
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("starter"); }}
-                  disabled={checkoutLoading || dbUser?.planName === "starter"}
+                  disabled={getPlanButtonDetails("starter").disabled}
                   className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                    dbUser?.planName === "starter"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
-                      : selectedPlan === "starter" ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+                    getPlanButtonDetails("starter").classes
                   }`}
                 >
                   {checkoutLoading && selectedPlan === "starter" ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
-                  ) : dbUser?.planName === "starter" ? (
-                    "Active Plan"
                   ) : (
-                    "Upgrade to Starter"
+                    getPlanButtonDetails("starter").text
                   )}
                 </button>
               </div>
@@ -1202,19 +1259,15 @@ export default function RootLandingPage() {
                 </ul>
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("family"); }}
-                  disabled={checkoutLoading || dbUser?.planName === "family"}
+                  disabled={getPlanButtonDetails("family").disabled}
                   className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                    dbUser?.planName === "family"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
-                      : selectedPlan === "family" ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+                    getPlanButtonDetails("family").classes
                   }`}
                 >
                   {checkoutLoading && selectedPlan === "family" ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
-                  ) : dbUser?.planName === "family" ? (
-                    "Active Plan"
                   ) : (
-                    "Upgrade to Family"
+                    getPlanButtonDetails("family").text
                   )}
                 </button>
               </div>
@@ -1250,19 +1303,15 @@ export default function RootLandingPage() {
                 </ul>
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("elite"); }}
-                  disabled={checkoutLoading || dbUser?.planName === "elite"}
+                  disabled={getPlanButtonDetails("elite").disabled}
                   className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                    dbUser?.planName === "elite"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
-                      : selectedPlan === "elite" ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+                    getPlanButtonDetails("elite").classes
                   }`}
                 >
                   {checkoutLoading && selectedPlan === "elite" ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
-                  ) : dbUser?.planName === "elite" ? (
-                    "Active Plan"
                   ) : (
-                    "Upgrade to Elite"
+                    getPlanButtonDetails("elite").text
                   )}
                 </button>
               </div>

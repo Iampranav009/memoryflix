@@ -10,7 +10,8 @@ import { getCookie, setCookie, deleteCookie } from "@/lib/cookies";
 import { 
   User, Shield, Lock, Eye, EyeOff, Tv, Volume2, Check, 
   LogOut, AlertTriangle, Key, Mail, CheckCircle2, ChevronRight,
-  Database, Cloud, HardDrive, Trash2, Sparkles, Loader2, Sliders
+  Database, Cloud, HardDrive, Trash2, Sparkles, Loader2, Sliders,
+  CreditCard
 } from "lucide-react";
 
 const PRESET_AVATARS = [
@@ -34,13 +35,187 @@ function SettingsPageContent() {
   const searchParams = useSearchParams();
 
   // Active section tab
-  const [activeTab, setActiveTab] = useState<"profile" | "account" | "preferences" | "storage">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "account" | "preferences" | "storage" | "subscription">("profile");
 
   // Storage Vault states
   const [storageData, setStorageData] = useState<any>(null);
   const [storageLoading, setStorageLoading] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [deletingFileKey, setDeletingFileKey] = useState<string | null>(null);
+
+  // Subscription states
+  const [selectedPlan, setSelectedPlan] = useState<string>("starter");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  const PLAN_RANKS: Record<string, number> = {
+    free: 0,
+    starter: 1,
+    family: 2,
+    elite: 3
+  };
+
+  const getPlanButtonDetails = (planKey: string) => {
+    const isSelected = selectedPlan === planKey;
+    if (!dbUser) {
+      const capitalizedName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+      return {
+        disabled: false,
+        text: planKey === "free" ? "Select Free" : `Upgrade to ${capitalizedName}`,
+        classes: isSelected
+          ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer"
+          : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+      };
+    }
+
+    const currentPlan = dbUser.planName || "free";
+    const currentRank = PLAN_RANKS[currentPlan.toLowerCase()] ?? 0;
+    const targetRank = PLAN_RANKS[planKey.toLowerCase()] ?? 0;
+
+    if (currentPlan.toLowerCase() === planKey.toLowerCase()) {
+      return {
+        disabled: true,
+        text: "Active Plan",
+        classes: "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
+      };
+    }
+
+    if (targetRank < currentRank) {
+      return {
+        disabled: true,
+        text: "Downgrade Unavailable",
+        classes: "bg-zinc-800/50 border border-zinc-700/20 text-zinc-500 cursor-not-allowed opacity-50"
+      };
+    }
+
+    const capitalizedName = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+    return {
+      disabled: checkoutLoading,
+      text: checkoutLoading && selectedPlan === planKey ? "Processing..." : `Upgrade to ${capitalizedName}`,
+      classes: isSelected 
+        ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" 
+        : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+    };
+  };
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleCheckout = async (planName: string) => {
+    if (planName === "free") {
+      if (!dbUser) {
+        router.push("/login");
+      } else {
+        alert("You are automatically enrolled in the Free Tier on registration.");
+      }
+      return;
+    }
+
+    if (!dbUser) {
+      router.push(`/login?redirect=checkout&plan=${planName}`);
+      return;
+    }
+
+    setCheckoutLoading(true);
+    setPaymentSuccess(false);
+
+    try {
+      const res = await axios.post("/api/checkout", {
+        userId: dbUser.id,
+        planName,
+      });
+
+      const order = res.data;
+
+      if (order.isMock) {
+        console.log("Simulating checkout success locally...");
+        const webhookUrl = "/api/webhooks/razorpay";
+        await axios.post(webhookUrl, {
+          event: "payment.captured",
+          payload: {
+            payment: {
+              entity: {
+                id: `pay_${Math.random().toString(36).substring(2, 11)}`,
+                order_id: order.id,
+                status: "captured",
+                notes: {
+                  userId: dbUser.id,
+                  planName,
+                },
+              },
+            },
+          },
+        });
+
+        const syncResponse = await axios.post("/api/auth/sync", {
+          firebaseUid: dbUser.firebaseUid,
+          email: dbUser.email,
+          name: dbUser.name,
+          photoUrl: dbUser.photoUrl,
+        });
+        setDbUser(syncResponse.data);
+        setPaymentSuccess(true);
+        triggerNotification("success", `Successfully upgraded to ${planName.toUpperCase()} Plan!`);
+        return;
+      }
+
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        alert("Failed to load Razorpay Checkout SDK. Please check your internet connection.");
+        setCheckoutLoading(false);
+        return;
+      }
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_dummy",
+        amount: order.amount,
+        currency: order.currency,
+        name: "MemoryFlix",
+        description: `Upgrade to ${planName.toUpperCase()} Plan`,
+        order_id: order.id,
+        handler: async function (response: any) {
+          try {
+            setCheckoutLoading(true);
+            const syncResponse = await axios.post("/api/auth/sync", {
+              firebaseUid: dbUser.firebaseUid,
+              email: dbUser.email,
+              name: dbUser.name,
+              photoUrl: dbUser.photoUrl,
+            });
+            setDbUser(syncResponse.data);
+            setPaymentSuccess(true);
+            triggerNotification("success", `Successfully upgraded to ${planName.toUpperCase()} Plan!`);
+          } catch (err) {
+            console.error("Auth sync failed post-payment:", err);
+          } finally {
+            setCheckoutLoading(false);
+          }
+        },
+        prefill: {
+          name: dbUser.name || "",
+          email: dbUser.email || "",
+        },
+        theme: {
+          color: "#E50914",
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      console.error("Checkout initiation error:", err);
+      alert(err.response?.data?.error || err.message || "Failed to initiate payment");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
 
   // Profile forms
   const [profileName, setProfileName] = useState("");
@@ -69,14 +244,21 @@ function SettingsPageContent() {
   // Parse URL search parameters to sync active tab
   useEffect(() => {
     const tabParam = searchParams.get("tab");
+    const planParam = searchParams.get("plan");
     if (tabParam === "storage") {
       setActiveTab("storage");
     } else if (tabParam === "account") {
       setActiveTab("account");
     } else if (tabParam === "preferences") {
       setActiveTab("preferences");
+    } else if (tabParam === "subscription") {
+      setActiveTab("subscription");
     } else {
       setActiveTab("profile");
+    }
+
+    if (planParam) {
+      setSelectedPlan(planParam.toLowerCase());
     }
   }, [searchParams]);
 
@@ -385,6 +567,18 @@ function SettingsPageContent() {
             >
               <Database className="w-4.5 h-4.5" />
               <span>Storage Vault</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("subscription")}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-left whitespace-nowrap transition-all duration-300 w-full cursor-pointer ${
+                activeTab === "subscription" 
+                  ? "bg-netflix-red text-white shadow-lg shadow-netflix-red/10 scale-102" 
+                  : "text-white/60 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <CreditCard className="w-4.5 h-4.5" />
+              <span>Subscription & Pricing</span>
             </button>
           </div>
 
@@ -939,6 +1133,259 @@ function SettingsPageContent() {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* TAB: SUBSCRIPTION & PRICING */}
+            {activeTab === "subscription" && (
+              <div className="space-y-8 animate-fade-in">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold mb-1 flex items-center gap-2">
+                    <CreditCard className="w-6 h-6 text-netflix-red" />
+                    Subscription & Pricing
+                  </h2>
+                  <p className="text-white/50 text-xs md:text-sm">
+                    View your active subscription details, manage pricing plans, and upgrade storage vault capacities.
+                  </p>
+                </div>
+
+                {paymentSuccess && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl flex items-center gap-3 text-emerald-400 max-w-xl mx-auto animate-bounce">
+                    <Shield className="w-5 h-5 flex-shrink-0" />
+                    <div className="text-sm font-semibold">
+                      Payment successful! Your Memory Vault has been upgraded. Relive your stories with expanded storage.
+                    </div>
+                  </div>
+                )}
+
+                {/* Current Subscription Card */}
+                <div className="bg-[#181818] border border-white/5 rounded-xl p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-white/40">Current Plan</span>
+                      <span className="bg-netflix-red/10 border border-netflix-red/20 text-netflix-red px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">
+                        {dbUser.planName === "free" ? "Free Tier" :
+                         dbUser.planName === "starter" ? "Starter Vault" :
+                         dbUser.planName === "family" ? "Family Circle" :
+                         dbUser.planName === "elite" ? "Archivist Elite" : (dbUser.planName || "Free Tier")}
+                      </span>
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-white">
+                        {dbUser.planName === "free" ? "₹0 / Forever" :
+                         dbUser.planName === "starter" ? "₹150 / Month" :
+                         dbUser.planName === "family" ? "₹250 / Month" :
+                         dbUser.planName === "elite" ? "₹350 / Month" : "₹0 / Forever"}
+                      </h3>
+                      <p className="text-xs text-white/50 mt-1">
+                        Storage Limit: <strong className="text-white font-semibold">{dbUser.planName === "free" ? "500 MB" : dbUser.planName === "starter" ? "3 GB" : dbUser.planName === "family" ? "5 GB" : dbUser.planName === "elite" ? "7 GB" : "500 MB"}</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-xs space-y-1 w-full md:w-auto font-medium">
+                    <div className="flex justify-between md:gap-8">
+                      <span className="text-white/40">Status:</span>
+                      <span className="text-emerald-400 font-bold">Active</span>
+                    </div>
+                    <div className="flex justify-between md:gap-8">
+                      <span className="text-white/40">Payment:</span>
+                      <span className="text-white/80">Monthly Auto-renew</span>
+                    </div>
+                    <div className="flex justify-between md:gap-8">
+                      <span className="text-white/40">Sub ID:</span>
+                      <span className="text-white/60 font-mono">SUB-{dbUser.id.substring(0, 8).toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Plan Selection Cards Grid */}
+                <div className="space-y-6">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-netflix-red" />
+                    Available Storage Tiers
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                    {/* Free Plan Card */}
+                    <div 
+                      onClick={() => setSelectedPlan("free")}
+                      className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+                        selectedPlan === "free" 
+                          ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102 animate-pulse" 
+                          : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                      }`}
+                    >
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-lg font-bold text-white">Free Tier</h4>
+                          <span className="text-[9px] font-black tracking-widest text-white/40 uppercase bg-white/5 border border-white/10 px-2 py-0.5 rounded">STARTER</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-black text-white">₹0</span>
+                          <span className="text-xs text-white/40 font-bold uppercase">Forever</span>
+                        </div>
+                        <p className="text-xs text-white/50 leading-relaxed font-semibold">Perfect for individuals curating their first family stories.</p>
+                      </div>
+
+                      <div className="space-y-5 border-t border-white/5 pt-4">
+                        <ul className="space-y-3 text-xs font-semibold text-white/80">
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 500 MB Storage</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 2 Profiles</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> HD Quality Streams</li>
+                          <li className="flex items-center gap-2 text-white/35 line-through"><Check className="w-4 h-4 text-white/20" /> Collaborators</li>
+                        </ul>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleCheckout("free"); }}
+                          disabled={getPlanButtonDetails("free").disabled}
+                          className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                            getPlanButtonDetails("free").classes
+                          }`}
+                        >
+                          {checkoutLoading && selectedPlan === "free" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                          ) : (
+                            getPlanButtonDetails("free").text
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Starter Plan Card */}
+                    <div 
+                      onClick={() => setSelectedPlan("starter")}
+                      className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+                        selectedPlan === "starter" 
+                          ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102 animate-pulse" 
+                          : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                      }`}
+                    >
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-lg font-bold text-white">Starter Vault</h4>
+                          <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded">POPULAR</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-black text-white">₹150</span>
+                          <span className="text-xs text-white/40 font-bold uppercase">/ Month</span>
+                        </div>
+                        <p className="text-xs text-white/50 leading-relaxed font-semibold">Perfect for individuals curating more shows.</p>
+                      </div>
+
+                      <div className="space-y-5 border-t border-white/5 pt-4">
+                        <ul className="space-y-3 text-xs font-semibold text-white/80">
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 3 GB Secure Storage</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 4 Profiles</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 4K Cinematic Streams</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Collaborators</li>
+                        </ul>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleCheckout("starter"); }}
+                          disabled={getPlanButtonDetails("starter").disabled}
+                          className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                            getPlanButtonDetails("starter").classes
+                          }`}
+                        >
+                          {checkoutLoading && selectedPlan === "starter" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                          ) : (
+                            getPlanButtonDetails("starter").text
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Family Plan Card */}
+                    <div 
+                      onClick={() => setSelectedPlan("family")}
+                      className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+                        selectedPlan === "family" 
+                          ? "bg-black border-netflix-red shadow-[0_12px_40px_rgba(229,9,20,0.3)] scale-105 animate-pulse" 
+                          : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                      }`}
+                    >
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-netflix-red border border-white/15 text-white text-[9px] font-black uppercase tracking-widest px-3.5 py-1 rounded-full shadow-lg">
+                        ★ Best Choice
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-lg font-bold text-white">Family Circle</h4>
+                          <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded">PREMIUM</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-black text-white">₹250</span>
+                          <span className="text-xs text-white/40 font-bold uppercase">/ Month</span>
+                        </div>
+                        <p className="text-xs text-white/50 leading-relaxed font-semibold">The complete family catalog. Share streams with relatives.</p>
+                      </div>
+
+                      <div className="space-y-5 border-t border-white/5 pt-4">
+                        <ul className="space-y-3 text-xs font-semibold text-white/80">
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 5 GB Secure Vault</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 6 Profiles</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 4K Ultra HD Streams</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Offline Vault Backup</li>
+                        </ul>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleCheckout("family"); }}
+                          disabled={getPlanButtonDetails("family").disabled}
+                          className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                            getPlanButtonDetails("family").classes
+                          }`}
+                        >
+                          {checkoutLoading && selectedPlan === "family" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                          ) : (
+                            getPlanButtonDetails("family").text
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Elite Plan Card */}
+                    <div 
+                      onClick={() => setSelectedPlan("elite")}
+                      className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+                        selectedPlan === "elite" 
+                          ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102 animate-pulse" 
+                          : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                      }`}
+                    >
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-lg font-bold text-white">Archivist Elite</h4>
+                          <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">ELITE</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-black text-white">₹350</span>
+                          <span className="text-xs text-white/40 font-bold uppercase">/ Month</span>
+                        </div>
+                        <p className="text-xs text-white/50 leading-relaxed font-semibold">Store larger cinematic home movies permanently.</p>
+                      </div>
+
+                      <div className="space-y-5 border-t border-white/5 pt-4">
+                        <ul className="space-y-3 text-xs font-semibold text-white/80">
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 7 GB Encrypted Storage</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Unlimited Profiles</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Uncompressed Quality</li>
+                          <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Cold Storage Backup</li>
+                        </ul>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleCheckout("elite"); }}
+                          disabled={getPlanButtonDetails("elite").disabled}
+                          className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                            getPlanButtonDetails("elite").classes
+                          }`}
+                        >
+                          {checkoutLoading && selectedPlan === "elite" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                          ) : (
+                            getPlanButtonDetails("elite").text
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 

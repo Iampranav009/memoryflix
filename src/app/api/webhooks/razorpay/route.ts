@@ -17,8 +17,21 @@ export async function POST(request: Request) {
     const signature = request.headers.get("x-razorpay-signature") || "";
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-    // 1. Verify Webhook Signature if secret is configured
-    if (webhookSecret) {
+    let eventData;
+    try {
+      eventData = JSON.parse(rawBody);
+    } catch (e: any) {
+      console.error("Failed to parse webhook JSON body:", e);
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const paymentEntity = eventData.payload?.payment?.entity;
+    const orderEntity = eventData.payload?.order?.entity;
+    const orderId = paymentEntity?.order_id || orderEntity?.id || "";
+    const isMock = typeof orderId === "string" && orderId.startsWith("mock_order_");
+
+    // 1. Verify Webhook Signature if secret is configured and not mock
+    if (webhookSecret && !isMock) {
       const expectedSignature = crypto
         .createHmac("sha256", webhookSecret)
         .update(rawBody)
@@ -28,11 +41,11 @@ export async function POST(request: Request) {
         console.error("Razorpay webhook signature verification failed.");
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
       }
+    } else if (isMock) {
+      console.log("Mock/Simulated payment detected. Bypassing Razorpay webhook signature verification.");
     } else {
       console.warn("RAZORPAY_WEBHOOK_SECRET is not set. Signature verification bypassed.");
     }
-
-    const eventData = JSON.parse(rawBody);
     console.log("Razorpay webhook event received:", eventData.event);
 
     const eventType = eventData.event;
