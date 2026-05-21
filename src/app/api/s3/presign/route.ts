@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { s3, BUCKET_NAME } from "@/lib/s3";
 import { PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
@@ -30,13 +31,22 @@ export async function POST(request: Request) {
     }
 
     const incomingSize = fileSize ? parseInt(fileSize) : 0;
-    const limitBytes = 50 * 1024 * 1024 * 1024; // 50 GB
+
+    // Fetch user storage limit from database dynamically
+    const { data: dbUserData } = await supabase
+      .from("users")
+      .select("storage_limit_mb")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const storageLimitMb = dbUserData?.storage_limit_mb || 500;
+    const limitBytes = storageLimitMb * 1024 * 1024;
 
     if (currentUsageBytes + incomingSize > limitBytes) {
       return NextResponse.json(
         {
           error: "LIMIT_EXCEEDED",
-          message: "Your storage vault has reached its 50 GB capacity limit. Please delete existing memories in settings to free up space."
+          message: `Your storage vault has reached its ${storageLimitMb} MB capacity limit. Please upgrade your subscription plan or delete existing memories in settings to free up space.`
         },
         { status: 403 }
       );

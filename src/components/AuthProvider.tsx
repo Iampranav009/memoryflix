@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useStore } from "@/store/useStore";
 import axios from "axios";
 import { usePathname, useRouter } from "next/navigation";
+import { getCookie } from "@/lib/cookies";
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setDbUser, setActiveProfile, setIsLoading, isLoading } = useStore();
@@ -33,7 +34,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           const profilesResponse = await axios.get(`/api/profiles?userId=${syncedUser.id}`);
           const profiles = profilesResponse.data;
 
-          const storedProfileId = localStorage.getItem("memoryflix_active_profile_id");
+          const storedProfileId = getCookie("memoryflix_active_profile_id") || localStorage.getItem("memoryflix_active_profile_id");
           if (storedProfileId) {
             const matchedProfile = profiles.find((p: any) => p.id === storedProfileId);
             if (matchedProfile) {

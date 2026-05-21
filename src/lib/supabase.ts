@@ -44,6 +44,10 @@ export const mapUser = (user: any) => user ? ({
   name: user.name,
   photoUrl: user.photo_url,
   createdAt: user.created_at,
+  planName: user.plan_name || "free",
+  storageLimitMb: Number(user.storage_limit_mb || 500),
+  razorpaySubscriptionId: user.razorpay_subscription_id || null,
+  razorpayPaymentId: user.razorpay_payment_id || null,
 }) : null;
 
 export const mapProfile = (profile: any) => profile ? ({

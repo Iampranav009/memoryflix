@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase, mapEpisode } from "@/lib/supabase";
 import { s3, BUCKET_NAME } from "@/lib/s3";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { optimizeVideo } from "@/lib/videoProcessor";
 
 // GET episodes in a season
 export async function GET(request: Request) {
@@ -82,6 +83,11 @@ export async function POST(request: Request) {
 
     if (error) {
       throw error;
+    }
+
+    if (mediaType === "video") {
+      optimizeVideo(episode.id, mediaUrl, durationSeconds ? parseInt(durationSeconds) : 0)
+        .catch(err => console.error("Background video optimization failed to start:", err));
     }
 
     return NextResponse.json(mapEpisode(episode));

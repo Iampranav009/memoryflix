@@ -5,6 +5,10 @@ export interface DbUser {
   name: string | null;
   photoUrl: string | null;
   createdAt: string;
+  planName: string;
+  storageLimitMb: number;
+  razorpaySubscriptionId?: string | null;
+  razorpayPaymentId?: string | null;
 }
 
 export interface DbProfile {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
+import CookieBanner from "@/components/CookieBanner";
 
 export const metadata: Metadata = {
   title: "MemoryFlix — Replay Your Life's Moments",
@@ -62,7 +63,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full bg-[#141414] text-white flex flex-col font-sans" suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <CookieBanner />
+        </AuthProvider>
       </body>
     </html>
   );

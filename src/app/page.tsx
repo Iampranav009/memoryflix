@@ -9,6 +9,8 @@ import {
   Laptop, Smartphone, Database, Users, HelpCircle, 
   ChevronRight, Calendar, Clock, AlertCircle, PlayCircle
 } from "lucide-react";
+import { useStore } from "@/store/useStore";
+import axios from "axios";
 
 // Realistic Netflix-style Mock Memory Shows for the Interactive Showcase
 const MOCK_SHOWS = [
@@ -172,6 +174,124 @@ export default function RootLandingPage() {
   // Video trailer element reference
   const trailerVideoRef = useRef<HTMLVideoElement>(null);
 
+  const { dbUser, setDbUser, setShowCookieConsentModal } = useStore();
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleCheckout = async (planName: string) => {
+    if (planName === "free") {
+      alert("You are automatically enrolled in the Free Tier on registration.");
+      return;
+    }
+
+    if (!dbUser) {
+      router.push(`/login?redirect=checkout&plan=${planName}`);
+      return;
+    }
+
+    setCheckoutLoading(true);
+    setPaymentSuccess(false);
+
+    try {
+      const res = await axios.post("/api/checkout", {
+        userId: dbUser.id,
+        planName,
+      });
+
+      const order = res.data;
+
+      if (order.isMock) {
+        console.log("Simulating checkout success locally...");
+        const webhookUrl = "/api/webhooks/razorpay";
+        await axios.post(webhookUrl, {
+          event: "payment.captured",
+          payload: {
+            payment: {
+              entity: {
+                id: `pay_${Math.random().toString(36).substring(2, 11)}`,
+                order_id: order.id,
+                status: "captured",
+                notes: {
+                  userId: dbUser.id,
+                  planName,
+                },
+              },
+            },
+          },
+        });
+
+        const syncResponse = await axios.post("/api/auth/sync", {
+          firebaseUid: dbUser.firebaseUid,
+          email: dbUser.email,
+          name: dbUser.name,
+          photoUrl: dbUser.photoUrl,
+        });
+        setDbUser(syncResponse.data);
+        setPaymentSuccess(true);
+        setCheckoutLoading(false);
+        return;
+      }
+
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        alert("Failed to load Razorpay Checkout SDK. Please check your internet connection.");
+        setCheckoutLoading(false);
+        return;
+      }
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_dummy",
+        amount: order.amount,
+        currency: order.currency,
+        name: "MemoryFlix",
+        description: `Upgrade to ${planName.toUpperCase()} Plan`,
+        order_id: order.id,
+        handler: async function (response: any) {
+          try {
+            setCheckoutLoading(true);
+            const syncResponse = await axios.post("/api/auth/sync", {
+              firebaseUid: dbUser.firebaseUid,
+              email: dbUser.email,
+              name: dbUser.name,
+              photoUrl: dbUser.photoUrl,
+            });
+            setDbUser(syncResponse.data);
+            setPaymentSuccess(true);
+          } catch (err) {
+            console.error("Auth sync failed post-payment:", err);
+          } finally {
+            setCheckoutLoading(false);
+          }
+        },
+        prefill: {
+          name: dbUser.name || "",
+          email: dbUser.email || "",
+        },
+        theme: {
+          color: "#E50914",
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err: any) {
+      console.error("Checkout initiation error:", err);
+      alert(err.response?.data?.error || err.message || "Failed to initiate payment");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
   // Handle simulated playback countdown
   useEffect(() => {
     let interval: any;
@@ -232,12 +352,21 @@ export default function RootLandingPage() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push("/login")}
-              className="px-5 py-2.5 rounded bg-netflix-red hover:bg-netflix-red-hover text-white text-sm font-bold tracking-wide transition-all duration-200 cursor-pointer shadow-[0_4px_15px_rgba(229,9,20,0.4)] hover:scale-105 active:scale-95"
-            >
-              Sign In
-            </button>
+            {dbUser ? (
+              <button
+                onClick={() => router.push("/browse")}
+                className="px-5 py-2.5 rounded bg-netflix-red hover:bg-netflix-red-hover text-white text-sm font-bold tracking-wide transition-all duration-200 cursor-pointer shadow-[0_4px_15px_rgba(229,9,20,0.4)] hover:scale-105 active:scale-95"
+              >
+                Go to Browse
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push("/login")}
+                className="px-5 py-2.5 rounded bg-netflix-red hover:bg-netflix-red-hover text-white text-sm font-bold tracking-wide transition-all duration-200 cursor-pointer shadow-[0_4px_15px_rgba(229,9,20,0.4)] hover:scale-105 active:scale-95"
+              >
+                Sign In
+              </button>
+            )}
           </div>
         </header>
 
@@ -886,7 +1015,7 @@ export default function RootLandingPage() {
 
 
       {/* 7. NETFLIX-STYLE PREMIUM PLAN PRICE GRID */}
-      <section className="py-24 px-6 md:px-16 bg-[#141414] relative z-20 border-t border-white/5">
+      <section id="pricing" className="py-24 px-6 md:px-16 bg-[#141414] relative z-20 border-t border-white/5">
         <div className="max-w-5xl mx-auto space-y-16">
           
           <div className="text-center space-y-4">
@@ -898,13 +1027,65 @@ export default function RootLandingPage() {
             </p>
           </div>
 
+          {/* Payment Success Alert Banner */}
+          {paymentSuccess && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl flex items-center gap-3 text-emerald-400 max-w-xl mx-auto animate-bounce">
+              <Shield className="w-5 h-5 flex-shrink-0" />
+              <div className="text-sm font-semibold">
+                Payment successful! Your Memory Vault has been upgraded. Relive your stories with expanded storage.
+              </div>
+            </div>
+          )}
+
           {/* Interactive Pricing Toggle Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             
+            {/* Free plan */}
+            <div 
+              onClick={() => setSelectedPlan("free")}
+              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+                selectedPlan === "free" 
+                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102" 
+                  : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+              }`}
+            >
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-lg font-bold text-white">Free Tier</h4>
+                  <span className="text-[9px] font-black tracking-widest text-white/40 uppercase bg-white/5 border border-white/10 px-2 py-0.5 rounded">STARTER</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-black text-white">₹0</span>
+                  <span className="text-xs text-white/40 font-bold uppercase">Forever</span>
+                </div>
+                <p className="text-xs text-white/50 leading-relaxed font-semibold">Perfect for individuals curating their first family stories.</p>
+              </div>
+
+              <div className="space-y-5 border-t border-white/5 pt-4">
+                <ul className="space-y-3 text-xs font-semibold text-white/80">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 500 MB Storage</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 2 Profiles</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> HD Quality Streams</li>
+                  <li className="flex items-center gap-2 text-white/35 line-through"><Check className="w-4 h-4 text-white/20" /> Collaborators</li>
+                </ul>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleCheckout("free"); }}
+                  disabled={dbUser?.planName === "free"}
+                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                    dbUser?.planName === "free"
+                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
+                      : selectedPlan === "free" ? "bg-netflix-red text-white hover:bg-netflix-red-hover" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10"
+                  }`}
+                >
+                  {dbUser?.planName === "free" ? "Active Plan" : "Select Free"}
+                </button>
+              </div>
+            </div>
+
             {/* Starter plan */}
             <div 
               onClick={() => setSelectedPlan("starter")}
-              className={`p-8 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-8 ${
+              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "starter" 
                   ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102" 
                   : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
@@ -912,28 +1093,39 @@ export default function RootLandingPage() {
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-xl font-bold text-white">Starter Vault</h4>
-                  <span className="text-[10px] font-black tracking-widest text-white/40 uppercase bg-white/5 border border-white/10 px-2 py-1 rounded">FREE</span>
+                  <h4 className="text-lg font-bold text-white">Starter Vault</h4>
+                  <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded">POPULAR</span>
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-black text-white">$0</span>
-                  <span className="text-xs text-white/40 font-bold uppercase">Forever</span>
+                  <span className="text-3xl font-black text-white">₹150</span>
+                  <span className="text-xs text-white/40 font-bold uppercase">/ Month</span>
                 </div>
-                <p className="text-xs text-white/50 leading-relaxed font-semibold">Perfect for individuals and small test suites looking to curate their first life shows.</p>
+                <p className="text-xs text-white/50 leading-relaxed font-semibold">Perfect for individuals and small test suites looking to curate more shows.</p>
               </div>
 
-              <div className="space-y-5 border-t border-white/5 pt-6">
-                <ul className="space-y-3.5 text-xs font-semibold text-white/80">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 10 GB Secure Storage</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 2 Personal profiles</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> HD Quality 720p streams</li>
-                  <li className="flex items-center gap-2 text-white/35 line-through"><Check className="w-4 h-4 text-white/20" /> Collaborator Invites</li>
-                  <li className="flex items-center gap-2 text-white/35 line-through"><Check className="w-4 h-4 text-white/20" /> Offline Vault Backup</li>
+              <div className="space-y-5 border-t border-white/5 pt-4">
+                <ul className="space-y-3 text-xs font-semibold text-white/80">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 3 GB Secure Storage</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 4 Profiles</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 4K Cinematic Streams</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Collaborator Invites</li>
                 </ul>
-                <button className={`w-full py-3.5 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                  selectedPlan === "starter" ? "bg-netflix-red text-white" : "bg-white/5 border border-white/10 text-white/80"
-                }`}>
-                  Select Starter
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleCheckout("starter"); }}
+                  disabled={checkoutLoading || dbUser?.planName === "starter"}
+                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                    dbUser?.planName === "starter"
+                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
+                      : selectedPlan === "starter" ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+                  }`}
+                >
+                  {checkoutLoading && selectedPlan === "starter" ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  ) : dbUser?.planName === "starter" ? (
+                    "Active Plan"
+                  ) : (
+                    "Upgrade to Starter"
+                  )}
                 </button>
               </div>
             </div>
@@ -941,41 +1133,52 @@ export default function RootLandingPage() {
             {/* Standard Family plan (Recommended) */}
             <div 
               onClick={() => setSelectedPlan("family")}
-              className={`p-8 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-8 ${
+              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "family" 
                   ? "bg-black border-netflix-red shadow-[0_12px_40px_rgba(229,9,20,0.3)] scale-105" 
                   : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
               }`}
             >
               {/* Popular badge */}
-              <div className="absolute -top-4.5 left-1/2 -translate-x-1/2 bg-netflix-red border border-white/15 text-white text-[10px] font-black uppercase tracking-widest px-4.5 py-1.5 rounded-full shadow-lg">
-                ★ Highly Popular
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-netflix-red border border-white/15 text-white text-[9px] font-black uppercase tracking-widest px-3.5 py-1 rounded-full shadow-lg">
+                ★ Best Choice
               </div>
 
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-xl font-bold text-white">Family Circle</h4>
-                  <span className="text-[10px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-1 rounded">PREMIUM</span>
+                  <h4 className="text-lg font-bold text-white">Family Circle</h4>
+                  <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded">PREMIUM</span>
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-black text-white">$9</span>
+                  <span className="text-3xl font-black text-white">₹250</span>
                   <span className="text-xs text-white/40 font-bold uppercase">/ Month</span>
                 </div>
-                <p className="text-xs text-white/50 leading-relaxed font-semibold">The complete family catalog. Perfect for collaborative vaults and sharing streams with elders.</p>
+                <p className="text-xs text-white/50 leading-relaxed font-semibold">The complete family catalog. Perfect for sharing streams with relatives.</p>
               </div>
 
-              <div className="space-y-5 border-t border-white/5 pt-6">
-                <ul className="space-y-3.5 text-xs font-semibold text-white/80">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 500 GB Secure Vault</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 6 profiles with pins</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 4K Ultra HD Streaming</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Collaborative Invites</li>
-                  <li className="flex items-center gap-2 text-white/35 line-through"><Check className="w-4 h-4 text-white/20" /> Offline Vault Backup</li>
+              <div className="space-y-5 border-t border-white/5 pt-4">
+                <ul className="space-y-3 text-xs font-semibold text-white/80">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 5 GB Secure Vault</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Up to 6 Profiles</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 4K Ultra HD Streams</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Offline Vault Backup</li>
                 </ul>
-                <button className={`w-full py-3.5 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                  selectedPlan === "family" ? "bg-netflix-red text-white" : "bg-white/5 border border-white/10 text-white/80"
-                }`}>
-                  Get Started (Premium)
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleCheckout("family"); }}
+                  disabled={checkoutLoading || dbUser?.planName === "family"}
+                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                    dbUser?.planName === "family"
+                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
+                      : selectedPlan === "family" ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+                  }`}
+                >
+                  {checkoutLoading && selectedPlan === "family" ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  ) : dbUser?.planName === "family" ? (
+                    "Active Plan"
+                  ) : (
+                    "Upgrade to Family"
+                  )}
                 </button>
               </div>
             </div>
@@ -983,7 +1186,7 @@ export default function RootLandingPage() {
             {/* Archivist elite plan */}
             <div 
               onClick={() => setSelectedPlan("elite")}
-              className={`p-8 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-8 ${
+              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "elite" 
                   ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102" 
                   : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
@@ -991,28 +1194,39 @@ export default function RootLandingPage() {
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-xl font-bold text-white">Archivist Elite</h4>
-                  <span className="text-[10px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">ELITE</span>
+                  <h4 className="text-lg font-bold text-white">Archivist Elite</h4>
+                  <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">ELITE</span>
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-black text-white">$24</span>
+                  <span className="text-3xl font-black text-white">₹350</span>
                   <span className="text-xs text-white/40 font-bold uppercase">/ Month</span>
                 </div>
-                <p className="text-xs text-white/50 leading-relaxed font-semibold">For serious documentarians looking to store terabytes of 4K cinematic home movies permanently.</p>
+                <p className="text-xs text-white/50 leading-relaxed font-semibold">For serious documentarians looking to store larger cinematic home movies permanently.</p>
               </div>
 
-              <div className="space-y-5 border-t border-white/5 pt-6">
-                <ul className="space-y-3.5 text-xs font-semibold text-white/80">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 2 TB+ Encrypted Storage</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Unlimited Custom Profiles</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Full Uncompressed Formats</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Collaborative Invites</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Offline Cold-Storage Backup</li>
+              <div className="space-y-5 border-t border-white/5 pt-4">
+                <ul className="space-y-3 text-xs font-semibold text-white/80">
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> 7 GB Encrypted Storage</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Unlimited Profiles</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Uncompressed Quality</li>
+                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-netflix-red" /> Cold Storage Backup</li>
                 </ul>
-                <button className={`w-full py-3.5 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
-                  selectedPlan === "elite" ? "bg-netflix-red text-white" : "bg-white/5 border border-white/10 text-white/80"
-                }`}>
-                  Select Archivist Elite
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleCheckout("elite"); }}
+                  disabled={checkoutLoading || dbUser?.planName === "elite"}
+                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                    dbUser?.planName === "elite"
+                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-default"
+                      : selectedPlan === "elite" ? "bg-netflix-red text-white hover:bg-netflix-red-hover cursor-pointer" : "bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 cursor-pointer"
+                  }`}
+                >
+                  {checkoutLoading && selectedPlan === "elite" ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  ) : dbUser?.planName === "elite" ? (
+                    "Active Plan"
+                  ) : (
+                    "Upgrade to Elite"
+                  )}
                 </button>
               </div>
             </div>
@@ -1180,6 +1394,7 @@ export default function RootLandingPage() {
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Privacy Policy Audit</span></li>
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Collaborator Invite Help</span></li>
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">AWS Custom Bucket Config</span></li>
+                <li><span onClick={() => setShowCookieConsentModal(true)} className="hover:underline hover:text-white cursor-pointer transition-colors">Cookie Preferences</span></li>
               </ul>
             </div>
           </div>

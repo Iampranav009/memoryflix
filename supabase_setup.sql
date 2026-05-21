@@ -11,7 +11,11 @@ CREATE TABLE IF NOT EXISTS public.users (
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255),
     photo_url TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    plan_name VARCHAR(50) DEFAULT 'free' NOT NULL,
+    storage_limit_mb BIGINT DEFAULT 500 NOT NULL,
+    razorpay_subscription_id VARCHAR(255),
+    razorpay_payment_id VARCHAR(255)
 );
 
 -- 2. Create Profiles Table
@@ -82,3 +86,11 @@ ALTER TABLE public.my_list DISABLE ROW LEVEL SECURITY;
 -- (In case PostgREST schema cache needs a nudge)
 -- NOTIFY pgrst, 'reload schema';
 -- =========================================================================
+
+-- =========================================================================
+-- DATABASE MIGRATION SCRIPT (For existing databases)
+-- =========================================================================
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS plan_name VARCHAR(50) DEFAULT 'free' NOT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS storage_limit_mb BIGINT DEFAULT 500 NOT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS razorpay_subscription_id VARCHAR(255);
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(255);

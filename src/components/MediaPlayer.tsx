@@ -4,6 +4,63 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { Play, Pause, X, RotateCcw, Volume2, VolumeX, Maximize2, SkipForward, SkipBack, Image, ChevronLeft, ChevronRight, PauseOctagon } from "lucide-react";
 import { DbEpisode } from "@/types";
+import axios from "axios";
+
+interface PreviewCue {
+  start: number;
+  end: number;
+  spriteUrl: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function parseVttTime(timeStr: string): number {
+  const parts = timeStr.trim().split(":");
+  let hrs = 0;
+  let mins = 0;
+  let secs = 0;
+
+  if (parts.length === 3) {
+    hrs = parseInt(parts[0]);
+    mins = parseInt(parts[1]);
+    secs = parseFloat(parts[2]);
+  } else if (parts.length === 2) {
+    mins = parseInt(parts[0]);
+    secs = parseFloat(parts[1]);
+  }
+
+  return hrs * 3600 + mins * 60 + secs;
+}
+
+function parseVTT(vttText: string, spriteUrl: string): PreviewCue[] {
+  const cues: PreviewCue[] = [];
+  const lines = vttText.split(/\r?\n/);
+  let currentCue: Partial<PreviewCue> = {};
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.includes("-->")) {
+      const parts = line.split("-->");
+      currentCue.start = parseVttTime(parts[0]);
+      currentCue.end = parseVttTime(parts[1]);
+    } else if (line.includes("#xywh=")) {
+      const parts = line.split("#xywh=");
+      const coords = parts[1].split(",").map(Number);
+      if (coords.length === 4) {
+        currentCue.spriteUrl = spriteUrl;
+        currentCue.x = coords[0];
+        currentCue.y = coords[1];
+        currentCue.w = coords[2];
+        currentCue.h = coords[3];
+        cues.push(currentCue as PreviewCue);
+      }
+      currentCue = {};
+    }
+  }
+  return cues;
+}
 
 export default function MediaPlayer() {
   const { activePlaybackEpisode, activePlaybackPlaylist, setActivePlayback } = useStore();
@@ -14,9 +71,6 @@ export default function MediaPlayer() {
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  
-  // Netflix Intro states
-  const [introActive, setIntroActive] = useState<boolean>(false);
 
   // Photo slideshow states
   const [slideshowActive, setSlideshowActive] = useState(true);
@@ -68,18 +122,94 @@ export default function MediaPlayer() {
       handleNext();
     }
   };
+  
+  // Netflix Intro states
+  const [introActive, setIntroActive] = useState<boolean>(false);
+
+  // Timeline Preview Thumbnail states
+  const [previewCues, setPreviewCues] = useState<PreviewCue[]>([]);
+  const [hoveredTime, setHoveredTime] = useState<number>(0);
+  const [previewVisible, setPreviewVisible] = useState<boolean>(false);
+  const [previewPositionPercent, setPreviewPositionPercent] = useState<number>(0);
+  const [activeCue, setActiveCue] = useState<PreviewCue | null>(null);
+  const [resolvedVideoUrl, setResolvedVideoUrl] = useState<string>("");
+  const sliderRef = useRef<HTMLInputElement>(null);
+  const sliderContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleSliderMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!sliderContainerRef.current || combinedDuration === 0 || previewCues.length === 0) return;
+
+    const rect = sliderContainerRef.current.getBoundingClientRect();
+    const clientX = e.clientX;
+    
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const hoverTime = pct * combinedDuration;
+    
+    setHoveredTime(hoverTime);
+    setPreviewPositionPercent(pct * 100);
+    setPreviewVisible(true);
+
+    const cue = previewCues.find(c => hoverTime >= c.start && hoverTime < c.end);
+    if (cue) {
+      setActiveCue(cue);
+    } else {
+      setActiveCue(null);
+    }
+  };
+
+  const handleSliderMouseLeave = () => {
+    setPreviewVisible(false);
+    setActiveCue(null);
+  };
 
   useEffect(() => {
+    if (!activePlaybackEpisode) return;
+
     // Reset play state when episode changes
     setIsPlaying(true);
     setCurrentTime(0);
     setCurrentSubVideoIndex(0);
     setSlideshowProgress(0);
     pendingSeekTimeRef.current = null;
+    setResolvedVideoUrl("");
+    setPreviewCues([]);
+    setActiveCue(null);
+    setPreviewVisible(false);
 
-    // Auto-enable intro if media is a video
-    if (activePlaybackEpisode?.mediaType === "video") {
+    if (activePlaybackEpisode.mediaType === "video") {
       setIntroActive(true);
+
+      // Fetch the resolved play URL
+      axios.get(`/video/${activePlaybackEpisode.id}`)
+        .then(res => {
+          if (res.data?.url) {
+            setResolvedVideoUrl(res.data.url);
+          }
+        })
+        .catch(err => {
+          console.error("Failed to load video URL from backend:", err);
+          // Fallback to mediaUrl
+          setResolvedVideoUrl(activePlaybackEpisode.mediaUrl);
+        });
+
+      // Fetch preview data and parse WebVTT
+      axios.get(`/video/${activePlaybackEpisode.id}/preview`)
+        .then(async res => {
+          const { spriteUrl, vttUrl } = res.data;
+          if (vttUrl && spriteUrl) {
+            try {
+              const vttRes = await fetch(vttUrl);
+              const vttText = await vttRes.text();
+              const cues = parseVTT(vttText, spriteUrl);
+              setPreviewCues(cues);
+            } catch (err) {
+              console.error("Error loading or parsing WebVTT file:", err);
+            }
+          }
+        })
+        .catch(err => {
+          console.error("Failed to fetch video preview details:", err);
+        });
     } else {
       setIntroActive(false);
     }
@@ -88,7 +218,7 @@ export default function MediaPlayer() {
   const isVideo = activePlaybackEpisode?.mediaType === "video";
   const videoSrc = (isVideo && introActive)
     ? "/netflix _intro_1080p.mp4"
-    : (subVideos[currentSubVideoIndex]?.url || activePlaybackEpisode?.mediaUrl || "");
+    : (resolvedVideoUrl || subVideos[currentSubVideoIndex]?.url || activePlaybackEpisode?.mediaUrl || "");
 
   // Handle dynamic source loading & play state
   useEffect(() => {
@@ -464,14 +594,47 @@ export default function MediaPlayer() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-4 w-full">
-                    <input
-                      type="range"
-                      min={0}
-                      max={combinedDuration || 0}
-                      value={cumulativeTime}
-                      onChange={handleSeek}
-                      className="w-full h-1.5 bg-[#666]/50 rounded-lg appearance-none cursor-pointer accent-[#E50914] focus:outline-none transition-all duration-300"
-                    />
+                    <div 
+                      ref={sliderContainerRef}
+                      onMouseMove={handleSliderMouseMove}
+                      onMouseLeave={handleSliderMouseLeave}
+                      className="relative flex-grow py-3 cursor-pointer group"
+                    >
+                      {/* Timeline Preview Thumbnail Tooltip */}
+                      {previewVisible && activeCue && (
+                        <div 
+                          className="absolute bottom-full mb-3 pointer-events-none flex flex-col items-center z-50 transition-opacity duration-150"
+                          style={{ 
+                            left: `${previewPositionPercent}%`, 
+                            transform: 'translateX(-50%)' 
+                          }}
+                        >
+                          <div 
+                            className="rounded-md border-2 border-white/40 shadow-2xl bg-black overflow-hidden"
+                            style={{
+                              backgroundImage: `url(${activeCue.spriteUrl})`,
+                              backgroundPosition: `-${activeCue.x}px -${activeCue.y}px`,
+                              width: `${activeCue.w}px`,
+                              height: `${activeCue.h}px`,
+                              backgroundRepeat: "no-repeat"
+                            }}
+                          />
+                          <span className="mt-1.5 bg-black/95 text-white text-[11px] font-bold px-2 py-0.5 rounded border border-white/15 shadow-md tabular-nums">
+                            {formatTime(hoveredTime)}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <input
+                        ref={sliderRef}
+                        type="range"
+                        min={0}
+                        max={combinedDuration || 0}
+                        value={cumulativeTime}
+                        onChange={handleSeek}
+                        className="w-full h-1.5 bg-[#666]/50 rounded-lg appearance-none cursor-pointer accent-[#E50914] focus:outline-none transition-all duration-300 group-hover:h-2"
+                      />
+                    </div>
                     <span className="text-white text-xs md:text-sm font-bold min-w-16 text-right tabular-nums">
                       {formatTime(cumulativeTime)} / {formatTime(combinedDuration)}
                     </span>

@@ -121,13 +121,25 @@ export async function GET(request: Request) {
       };
     });
 
-    // Limit to 50 GB
-    const limitBytes = 50 * 1024 * 1024 * 1024;
+    // Fetch user from DB to obtain actual storage limit
+    const { data: dbUserData } = await supabase
+      .from("users")
+      .select("storage_limit_mb, plan_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const storageLimitMb = dbUserData?.storage_limit_mb || 500;
+    const planName = dbUserData?.plan_name || "free";
+
+    // Dynamic storage limit allocation
+    const limitBytes = storageLimitMb * 1024 * 1024;
     const percentUsed = totalSizeBytes > 0 ? (totalSizeBytes / limitBytes) * 100 : 0;
 
     return NextResponse.json({
       totalSizeBytes,
       limitBytes,
+      storageLimitMb,
+      planName,
       percentUsed: parseFloat(percentUsed.toFixed(2)),
       breakdown: {
         videosBytes,

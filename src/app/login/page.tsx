@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { signInWithGoogle, supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { useStore } from "@/store/useStore";
 
 export default function LoginPage() {
+  const { setShowCookieConsentModal } = useStore();
   const [isSignUp, setIsSignUp] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -244,6 +246,7 @@ export default function LoginPage() {
             <span className="hover:underline cursor-pointer transition-colors hover:text-white">Privacy Policy</span>
             <span className="hover:underline cursor-pointer transition-colors hover:text-white">Terms of Use</span>
             <span className="hover:underline cursor-pointer transition-colors hover:text-white">Help Center</span>
+            <span onClick={() => setShowCookieConsentModal(true)} className="hover:underline cursor-pointer transition-colors hover:text-white">Cookie Preferences</span>
           </div>
         </div>
       </footer>

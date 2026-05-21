@@ -8,13 +8,17 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  firebaseUid  String    @unique @map("firebase_uid")
-  email        String    @unique
-  name         String?
-  photoUrl     String?   @map("photo_url")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  profiles     Profile[]
+  id                     String    @id @default(uuid())
+  firebaseUid            String    @unique @map("firebase_uid")
+  email                  String    @unique
+  name                   String?
+  photoUrl               String?   @map("photo_url")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  planName               String    @default("free") @map("plan_name")
+  storageLimitMb         Int       @default(500) @map("storage_limit_mb")
+  razorpaySubscriptionId String?   @map("razorpay_subscription_id")
+  razorpayPaymentId      String?   @map("razorpay_payment_id")
+  profiles               Profile[]
 
   @@map("users")
 }

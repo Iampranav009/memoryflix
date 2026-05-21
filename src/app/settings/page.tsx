@@ -6,10 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { supabase, logout } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
+import { getCookie, setCookie, deleteCookie } from "@/lib/cookies";
 import { 
   User, Shield, Lock, Eye, EyeOff, Tv, Volume2, Check, 
   LogOut, AlertTriangle, Key, Mail, CheckCircle2, ChevronRight,
-  Database, Cloud, HardDrive, Trash2, Sparkles, Loader2
+  Database, Cloud, HardDrive, Trash2, Sparkles, Loader2, Sliders
 } from "lucide-react";
 
 const PRESET_AVATARS = [
@@ -28,7 +29,7 @@ const PRESET_AVATARS = [
 ];
 
 function SettingsPageContent() {
-  const { dbUser, activeProfile, setActiveProfile, setDbUser, isLoading } = useStore();
+  const { dbUser, activeProfile, setActiveProfile, setDbUser, isLoading, setShowCookieConsentModal } = useStore();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -156,13 +157,13 @@ function SettingsPageContent() {
     }
   }, [dbUser, activeProfile, isLoading]);
 
-  // Load preferences from local storage
+  // Load preferences from cookies/local storage
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const storedQuality = localStorage.getItem("mf_pref_quality");
-      const storedAudio = localStorage.getItem("mf_pref_audio");
-      const storedAutoplayNext = localStorage.getItem("mf_pref_autoplay_next");
-      const storedAutoplayPrev = localStorage.getItem("mf_pref_autoplay_prev");
+      const storedQuality = getCookie("mf_pref_quality") || localStorage.getItem("mf_pref_quality");
+      const storedAudio = getCookie("mf_pref_audio") || localStorage.getItem("mf_pref_audio");
+      const storedAutoplayNext = getCookie("mf_pref_autoplay_next") || localStorage.getItem("mf_pref_autoplay_next");
+      const storedAutoplayPrev = getCookie("mf_pref_autoplay_prev") || localStorage.getItem("mf_pref_autoplay_prev");
 
       if (storedQuality) setStreamQuality(storedQuality);
       if (storedAudio) setAudioMode(storedAudio);
@@ -267,6 +268,21 @@ function SettingsPageContent() {
   const savePreferences = (key: string, value: string | boolean) => {
     if (typeof window !== "undefined") {
       localStorage.setItem(key, String(value));
+      
+      const consentCookie = getCookie("memoryflix_cookie_consent");
+      let functionalAllowed = false;
+      if (consentCookie) {
+        try {
+          const parsed = JSON.parse(consentCookie);
+          functionalAllowed = !!parsed.functional;
+        } catch (e) {}
+      }
+      
+      if (functionalAllowed) {
+        setCookie(key, String(value), 365);
+      } else {
+        deleteCookie(key);
+      }
     }
     triggerNotification("success", "Preferences saved and applied!");
   };
@@ -695,6 +711,26 @@ function SettingsPageContent() {
                     </div>
                   </div>
 
+                  {/* Cookie Consent Settings Card */}
+                  <div className="bg-white/5 p-5 rounded-lg border border-white/5 space-y-4">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-white/60 flex items-center gap-1.5">
+                      <Shield className="w-4.5 h-4.5 text-netflix-red" />
+                      Cookie Consent Settings
+                    </h4>
+                    <p className="text-xs text-white/40 leading-relaxed font-medium">
+                      Control which optional cookies you allow us to store on your browser. MemoryFlix uses cookies to authenticate your account, sync active profile details, and save your visual quality and sound output preferences.
+                    </p>
+                    <div className="pt-2">
+                      <button
+                        onClick={() => setShowCookieConsentModal(true)}
+                        className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-white/10 hover:border-white/20 text-white rounded text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow active:scale-95"
+                      >
+                        <Sliders className="w-3.5 h-3.5 text-netflix-red" />
+                        Manage Cookie Preferences
+                      </button>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             )}
@@ -703,12 +739,25 @@ function SettingsPageContent() {
             {activeTab === "storage" && (
               <div className="space-y-8 animate-fade-in">
                 <div>
-                  <h2 className="text-xl md:text-2xl font-bold mb-1 flex items-center gap-2">
+                  <h2 className="text-xl md:text-2xl font-bold mb-1 flex items-center gap-2 flex-wrap">
                     <Database className="w-6 h-6 text-netflix-red" />
                     Storage Vault
+                    {storageData && (
+                      <span className={`text-[10px] font-black tracking-widest uppercase px-2.5 py-0.5 rounded border ml-2 ${
+                        storageData.planName === "free" ? "bg-white/5 border-white/10 text-white/60" :
+                        storageData.planName === "starter" ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400" :
+                        storageData.planName === "family" ? "bg-netflix-red/10 border-netflix-red/20 text-netflix-red" :
+                        "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                      }`}>
+                        {storageData.planName === "free" ? "Free Tier" :
+                         storageData.planName === "starter" ? "Starter Vault" :
+                         storageData.planName === "family" ? "Family Circle" :
+                         storageData.planName === "elite" ? "Archivist Elite" : storageData.planName}
+                      </span>
+                    )}
                   </h2>
                   <p className="text-white/50 text-xs md:text-sm">
-                    Track your video memories storage usage. A hard cap of 50 GB is enforced for your watch vault.
+                    Track your video memories storage usage. Your limit is dictated by your subscription plan.
                   </p>
                 </div>
 
@@ -756,7 +805,7 @@ function SettingsPageContent() {
 
                         <div className="flex justify-between text-xs text-white/40 font-semibold font-mono">
                           <span>{storageData ? formatBytes(storageData.totalSizeBytes) : "0 MB"}</span>
-                          <span>50.00 GB Limit</span>
+                          <span>{storageData ? formatBytes(storageData.limitBytes) : "500 MB Limit"}</span>
                         </div>
                       </div>
 
@@ -776,6 +825,27 @@ function SettingsPageContent() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Upgradable Plan Call to Action Banner */}
+                    {storageData && storageData.planName !== "elite" && (
+                      <div className="bg-gradient-to-r from-zinc-900/60 via-zinc-950/65 to-zinc-900/60 p-5 rounded-xl border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl backdrop-blur-sm">
+                        <div className="flex items-center gap-3.5">
+                          <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0 shadow-inner">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="font-bold text-sm text-white">Need more space in your watch vault?</h4>
+                            <p className="text-xs text-white/50 leading-relaxed font-semibold">Upgrade your account storage up to 7 GB for high-definition home video archives.</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => router.push("/#pricing")}
+                          className="w-full sm:w-auto px-5 py-2.5 rounded bg-netflix-red hover:bg-netflix-red-hover text-white text-xs font-bold uppercase tracking-wider transition-all shadow cursor-pointer active:scale-95 whitespace-nowrap"
+                        >
+                          View Pricing Plans
+                        </button>
+                      </div>
+                    )}
 
                     {/* File Reclamation Manager */}
                     <div className="space-y-4">
