@@ -514,7 +514,7 @@ export default function MediaPlayer() {
         <div className="w-full h-full relative">
           <video
             ref={videoRef}
-            src={videoSrc}
+            src={videoSrc || undefined}
             autoPlay
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
@@ -539,7 +539,7 @@ export default function MediaPlayer() {
       ) : (
         <div className="w-full h-full relative flex items-center justify-center bg-black/90 p-4">
           <img
-            src={activePlaybackEpisode.mediaUrl}
+            src={activePlaybackEpisode.mediaUrl || undefined}
             alt={activePlaybackEpisode.title}
             className="max-w-full max-h-full object-contain shadow-2xl rounded border border-white/5"
           />

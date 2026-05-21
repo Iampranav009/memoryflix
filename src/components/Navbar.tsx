@@ -192,7 +192,7 @@ export default function Navbar() {
             className="flex items-center gap-2 cursor-pointer group"
           >
             <img 
-              src={activeProfile.avatarUrl} 
+              src={activeProfile.avatarUrl || undefined} 
               alt={activeProfile.name} 
               className="w-8.5 h-8.5 rounded-md object-cover border border-white/15 transition-all group-hover:border-white shadow"
             />
@@ -208,7 +208,7 @@ export default function Navbar() {
               {/* Header profile info */}
               <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-3 bg-[#141414]/90 mb-1.5">
                 <img 
-                  src={activeProfile.avatarUrl} 
+                  src={activeProfile.avatarUrl || undefined} 
                   alt={activeProfile.name} 
                   className="w-7 h-7 rounded object-cover border border-white/10"
                 />
@@ -224,7 +224,7 @@ export default function Navbar() {
                       onClick={() => handleSwitchProfile(p)}
                       className="w-full px-4 py-2 hover:bg-white/10 text-left text-white/80 hover:text-white flex items-center gap-3 cursor-pointer transition-colors"
                     >
-                      <img src={p.avatarUrl} alt={p.name} className="w-6 h-6 rounded object-cover border border-white/5" />
+                      <img src={p.avatarUrl || undefined} alt={p.name} className="w-6 h-6 rounded object-cover border border-white/5" />
                       <span className="truncate max-w-[120px] font-semibold">{p.name}</span>
                     </button>
                   ))}

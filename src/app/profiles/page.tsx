@@ -5,7 +5,7 @@ import { useStore } from "@/store/useStore";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { DbProfile } from "@/types";
-import { Plus, Pencil, Trash2, X, AlertTriangle, HelpCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, X, AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
 
 const PRESET_AVATARS = [
   "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
@@ -239,12 +239,18 @@ export default function ProfilesPage() {
             className="group flex flex-col items-center cursor-pointer relative"
           >
             {/* Avatar Box */}
-            <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-lg overflow-hidden border-[3px] border-transparent group-hover:border-white group-hover:scale-105 transition-all duration-300 shadow-lg">
-              <img 
-                src={profile.avatarUrl} 
-                alt={profile.name} 
-                className="w-full h-full object-cover rounded bg-[#2a2a2a] group-hover:brightness-105"
-              />
+            <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-lg overflow-hidden border-[3px] border-transparent group-hover:border-white group-hover:scale-105 transition-all duration-300 shadow-lg flex items-center justify-center">
+              {profile.avatarUrl ? (
+                <img 
+                  src={profile.avatarUrl} 
+                  alt={profile.name} 
+                  className="w-full h-full object-cover rounded bg-[#2a2a2a] group-hover:brightness-105"
+                />
+              ) : (
+                <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-netflix-red animate-spin" />
+                </div>
+              )}
               
               {/* Manage Overlay */}
               {isManaging && (
@@ -306,12 +312,18 @@ export default function ProfilesPage() {
             <form onSubmit={handleCreateProfile} className="space-y-6">
               {/* Profile Details Inputs */}
               <div className="flex flex-col sm:flex-row gap-6 items-center border-b border-white/5 pb-6">
-                <div className="relative group">
-                  <img 
-                    src={newProfileAvatar} 
-                    alt="Selected avatar" 
-                    className={`w-24 h-24 rounded-lg object-cover bg-[#222] border border-white/15 shadow-xl ${isUploadingAvatar ? 'opacity-50' : ''}`}
-                  />
+                <div className="relative group flex items-center justify-center w-24 h-24">
+                  {newProfileAvatar ? (
+                    <img 
+                      src={newProfileAvatar} 
+                      alt="Selected avatar" 
+                      className={`w-24 h-24 rounded-lg object-cover bg-[#222] border border-white/15 shadow-xl ${isUploadingAvatar ? 'opacity-50' : ''}`}
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-lg bg-zinc-800 border border-white/15 shadow-xl flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-netflix-red animate-spin" />
+                    </div>
+                  )}
                   {isUploadingAvatar && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -403,12 +415,18 @@ export default function ProfilesPage() {
             <form onSubmit={handleUpdateProfile} className="space-y-6">
               {/* Profile Details Inputs */}
               <div className="flex flex-col sm:flex-row gap-6 items-center border-b border-white/5 pb-6">
-                <div className="relative group">
-                  <img 
-                    src={editProfileAvatar} 
-                    alt="Selected avatar" 
-                    className={`w-24 h-24 rounded-lg object-cover bg-[#222] border border-white/15 shadow-xl ${isUploadingAvatar ? 'opacity-50' : ''}`}
-                  />
+                <div className="relative group flex items-center justify-center w-24 h-24">
+                  {editProfileAvatar ? (
+                    <img 
+                      src={editProfileAvatar} 
+                      alt="Selected avatar" 
+                      className={`w-24 h-24 rounded-lg object-cover bg-[#222] border border-white/15 shadow-xl ${isUploadingAvatar ? 'opacity-50' : ''}`}
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-lg bg-zinc-800 border border-white/15 shadow-xl flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-netflix-red animate-spin" />
+                    </div>
+                  )}
                   {isUploadingAvatar && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

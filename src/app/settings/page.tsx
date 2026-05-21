@@ -599,11 +599,17 @@ function SettingsPageContent() {
                 <form onSubmit={handleProfileSave} className="space-y-6">
                   {/* Current info row */}
                   <div className="flex flex-col sm:flex-row gap-6 items-center bg-white/5 p-5 rounded-lg border border-white/5">
-                    <img 
-                      src={profileAvatar} 
-                      alt="Selected avatar" 
-                      className="w-24 h-24 rounded-lg object-cover bg-zinc-800 border border-white/20 shadow-lg"
-                    />
+                    {profileAvatar ? (
+                      <img 
+                        src={profileAvatar} 
+                        alt="Selected avatar" 
+                        className="w-24 h-24 rounded-lg object-cover bg-zinc-800 border border-white/20 shadow-lg"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 rounded-lg bg-zinc-800 border border-white/20 shadow-lg flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 text-netflix-red animate-spin" />
+                      </div>
+                    )}
                     <div className="flex-grow w-full space-y-4">
                       <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-white/50 mb-1.5">Profile Watch Name</label>
