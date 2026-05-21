@@ -33,6 +33,14 @@ export async function POST(request: Request) {
 
     // Graceful fallback for local development if keys are not set yet
     if (!keyId || !keySecret) {
+      if (process.env.NODE_ENV === "production") {
+        console.error("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is missing in production!");
+        return NextResponse.json(
+          { error: "Payment configuration error. Please contact support." },
+          { status: 500 }
+        );
+      }
+
       console.warn("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET environment variables are missing. Running in simulator/mock mode.");
       return NextResponse.json({
         id: `mock_order_${Math.random().toString(36).substring(2, 11)}`,
