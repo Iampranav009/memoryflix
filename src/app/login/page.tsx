@@ -21,7 +21,15 @@ export default function LoginPage() {
     setError(null);
     setMessage(null);
     try {
-      await signInWithGoogle();
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectParam = searchParams.get("redirect");
+      const planParam = searchParams.get("plan");
+      
+      let redirectTo = `${window.location.origin}/browse`;
+      if (redirectParam === "checkout" && planParam) {
+        redirectTo = `${window.location.origin}/?redirect=checkout&plan=${planParam}`;
+      }
+      await signInWithGoogle(redirectTo);
     } catch (err: any) {
       console.error("Google Sign-In failed:", err);
       setError(err.message || "Google Sign-In failed. Please try again.");

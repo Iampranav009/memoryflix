@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabase } from "@/lib/supabase";
+import { sendSubscriptionEmail } from "@/lib/mail";
 
 // Map plans to storage limits in MB
 const PLAN_LIMITS_MB: Record<string, number> = {
@@ -75,6 +76,20 @@ export async function POST(request: Request) {
       }
 
       console.log("Successfully updated user plan details in database:", data);
+
+      // Extract user email and fire confirmation email asynchronously
+      const updatedUser = data && data[0];
+      if (updatedUser && updatedUser.email) {
+        sendSubscriptionEmail(
+          updatedUser.email,
+          planName,
+          storageLimitMb,
+          paymentId,
+          orderId
+        ).catch((err) => {
+          console.error("Async email sending failed in Razorpay Webhook route:", err);
+        });
+      }
     }
 
     return NextResponse.json({ received: true }, { status: 200 });

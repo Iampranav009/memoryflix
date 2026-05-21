@@ -177,6 +177,29 @@ export default function RootLandingPage() {
   const { dbUser, setDbUser, setShowCookieConsentModal } = useStore();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const autoCheckoutTriggered = useRef(false);
+
+  // Auto-trigger checkout if redirected back with plan context
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectParam = searchParams.get("redirect");
+      const planParam = searchParams.get("plan");
+
+      if (redirectParam === "checkout" && planParam) {
+        if (dbUser && !autoCheckoutTriggered.current) {
+          autoCheckoutTriggered.current = true;
+          // Trigger checkout
+          handleCheckout(planParam);
+          // Clear query params to prevent re-triggering on reload
+          const url = new URL(window.location.href);
+          url.searchParams.delete("redirect");
+          url.searchParams.delete("plan");
+          window.history.replaceState({}, document.title, url.pathname + url.search);
+        }
+      }
+    }
+  }, [dbUser]);
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -190,7 +213,11 @@ export default function RootLandingPage() {
 
   const handleCheckout = async (planName: string) => {
     if (planName === "free") {
-      alert("You are automatically enrolled in the Free Tier on registration.");
+      if (!dbUser) {
+        router.push("/login");
+      } else {
+        alert("You are automatically enrolled in the Free Tier on registration.");
+      }
       return;
     }
 
@@ -239,6 +266,11 @@ export default function RootLandingPage() {
         setDbUser(syncResponse.data);
         setPaymentSuccess(true);
         setCheckoutLoading(false);
+        
+        // Success redirect after 2.5 seconds
+        setTimeout(() => {
+          router.push("/profiles");
+        }, 2500);
         return;
       }
 
@@ -267,6 +299,11 @@ export default function RootLandingPage() {
             });
             setDbUser(syncResponse.data);
             setPaymentSuccess(true);
+            
+            // Success redirect after 2.5 seconds
+            setTimeout(() => {
+              router.push("/profiles");
+            }, 2500);
           } catch (err) {
             console.error("Auth sync failed post-payment:", err);
           } finally {

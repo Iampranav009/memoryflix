@@ -839,7 +839,7 @@ function SettingsPageContent() {
                           </div>
                         </div>
                         <button
-                          onClick={() => router.push("/#pricing")}
+                          onClick={() => router.push("/?showpricing=true#pricing")}
                           className="w-full sm:w-auto px-5 py-2.5 rounded bg-netflix-red hover:bg-netflix-red-hover text-white text-xs font-bold uppercase tracking-wider transition-all shadow cursor-pointer active:scale-95 whitespace-nowrap"
                         >
                           View Pricing Plans

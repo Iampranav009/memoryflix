@@ -48,10 +48,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
           // If logged in and on the login/landing page, redirect based on profile choice
           if (pathname === "/login" || pathname === "/") {
-            if (storedProfileId && profiles.some((p: any) => p.id === storedProfileId)) {
-              router.push("/browse");
+            const searchParams = new URLSearchParams(window.location.search);
+            const redirectParam = searchParams.get("redirect");
+            const planParam = searchParams.get("plan");
+            const showPricing = searchParams.get("showpricing") === "true" || (typeof window !== "undefined" && window.location.hash === "#pricing");
+
+            if (redirectParam === "checkout" && planParam) {
+              router.push(`/?redirect=checkout&plan=${planParam}`);
+            } else if (showPricing) {
+              // Allow logged-in user to stay on landing page to view/change pricing plans
             } else {
-              router.push("/profiles");
+              if (storedProfileId && profiles.some((p: any) => p.id === storedProfileId)) {
+                router.push("/browse");
+              } else {
+                router.push("/profiles");
+              }
             }
           }
         } else {

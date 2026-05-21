@@ -11,12 +11,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 // Sign in with Google using Supabase OAuth
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = async (redirectTo?: string) => {
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/browse`,
+        redirectTo: redirectTo || `${window.location.origin}/browse`,
       }
     });
     if (error) throw error;
