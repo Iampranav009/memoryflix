@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  firebaseUid  String    @unique @map("firebase_uid")
+  email        String    @unique
+  name         String?
+  photoUrl     String?   @map("photo_url")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  profiles     Profile[]
+
+  @@map("users")
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  avatarUrl String   @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  seasons   Season[]
+  myList    MyList[]
+
+  @@map("profiles")
+}
+
+model Season {
+  id           String     @id @default(uuid())
+  profileId    String     @map("profile_id")
+  profile      Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  thumbnailUrl String?    @map("thumbnail_url")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  displayOrder Int        @default(0) @map("display_order")
+  episodes     Episode[]
+  myList       MyList[]
+
+  @@map("seasons")
+}
+
+model Episode {
+  id              String   @id @default(uuid())
+  seasonId        String   @map("season_id")
+  season          Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  thumbnailUrl    String?  @map("thumbnail_url")
+  mediaUrl        String   @map("media_url")
+  mediaType       String   @map("media_type") // "video" or "photo"
+  episodeNumber   Int      @map("episode_number")
+  memoryDate      DateTime @map("memory_date")
+  durationSeconds Int?     @map("duration_seconds")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("episodes")
+}
+
+model MyList {
+  id        String   @id @default(uuid())
+  profileId String   @map("profile_id")
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  seasonId  String   @map("season_id")
+  season    Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  @@unique([profileId, seasonId])
+  @@map("my_list")
+}
