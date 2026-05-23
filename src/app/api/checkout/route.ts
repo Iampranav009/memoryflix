@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import axios from "axios";
+import { verifyAuth } from "@/lib/auth";
 
 // Pricing mapper (values in paise for Razorpay: ₹1 = 100 paise)
 const PLAN_PRICES: Record<string, number> = {
@@ -10,6 +11,9 @@ const PLAN_PRICES: Record<string, number> = {
 
 export async function POST(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { userId, planName } = body;
 
@@ -20,6 +24,11 @@ export async function POST(request: Request) {
       );
     }
 
+    // Authorization Check: Enforce that the user can only create a checkout session for their own ID
+    if (user?.id !== userId) {
+      return NextResponse.json({ error: "Forbidden: You cannot checkout for another user" }, { status: 403 });
+    }
+
     const amount = PLAN_PRICES[planName];
     if (!amount) {
       return NextResponse.json(
@@ -28,20 +37,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const keyId = (process.env.RAZORPAY_KEY_ID || "").trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || "").trim();
 
-    // Graceful fallback for local development if keys are not set yet
+    // Graceful fallback if keys are not set yet — run in simulator/mock mode
     if (!keyId || !keySecret) {
-      if (process.env.NODE_ENV === "production") {
-        console.error("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is missing in production!");
-        return NextResponse.json(
-          { error: "Payment configuration error. Please contact support." },
-          { status: 500 }
-        );
-      }
-
-      console.warn("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET environment variables are missing. Running in simulator/mock mode.");
+      console.warn("RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not configured. Running in mock/demo mode.");
       return NextResponse.json({
         id: `mock_order_${Math.random().toString(36).substring(2, 11)}`,
         entity: "order",

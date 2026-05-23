@@ -5,6 +5,7 @@ import { useStore } from "@/store/useStore";
 import { X, Play, Heart, HeartOff, Clock, Calendar, Film, Share2, Copy, Check, Plus, ThumbsUp } from "lucide-react";
 import axios from "axios";
 import { DbEpisode } from "@/types";
+import { safeLocalStorage } from "@/lib/cookies";
 
 export default function InfoModal() {
   const { activeInfoSeason, setActiveInfoSeason, activeProfile, setActivePlayback } = useStore();
@@ -15,6 +16,8 @@ export default function InfoModal() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareAccess, setShareAccess] = useState<"viewer" | "editor">("viewer");
   const [copied, setCopied] = useState(false);
+  const [watchTrigger, setWatchTrigger] = useState(0);
+  const [seriesTitle, setSeriesTitle] = useState<string | null>(null);
 
   useEffect(() => {
     const checkBookmarkStatus = async () => {
@@ -31,6 +34,38 @@ export default function InfoModal() {
 
     checkBookmarkStatus();
   }, [activeInfoSeason, activeProfile]);
+
+  useEffect(() => {
+    const fetchSeriesTitle = async () => {
+      if (!activeInfoSeason?.seriesId) {
+        setSeriesTitle(null);
+        return;
+      }
+      try {
+        const res = await axios.get(`/api/series?id=${activeInfoSeason.seriesId}`);
+        if (res.data && res.data.title) {
+          setSeriesTitle(res.data.title);
+        } else {
+          setSeriesTitle(null);
+        }
+      } catch (err) {
+        console.error("Error fetching series details for badge:", err);
+        setSeriesTitle(null);
+      }
+    };
+
+    fetchSeriesTitle();
+  }, [activeInfoSeason]);
+
+  useEffect(() => {
+    const handleWatchIncrement = () => {
+      setWatchTrigger(prev => prev + 1);
+    };
+    window.addEventListener("memoryflix_watch_incremented", handleWatchIncrement);
+    return () => {
+      window.removeEventListener("memoryflix_watch_incremented", handleWatchIncrement);
+    };
+  }, []);
 
   if (!activeInfoSeason) return null;
 
@@ -83,7 +118,13 @@ export default function InfoModal() {
     }
   };
 
-  const handlePlayEpisode = (episode: DbEpisode) => {
+  const handlePlayEpisode = (episode: DbEpisode, e?: React.MouseEvent) => {
+    if (e?.shiftKey && typeof window !== "undefined" && activeProfile) {
+      const profileId = activeProfile.id;
+      safeLocalStorage.setItem(`memoryflix_watch_count_${profileId}_ep_${episode.id}`, "11");
+      safeLocalStorage.setItem(`memoryflix_watch_count_${profileId}_season_${episode.seasonId}`, "11");
+      window.dispatchEvent(new Event("memoryflix_watch_incremented"));
+    }
     setActivePlayback(episode, episodes);
     setActiveInfoSeason(null); // Close modal on play
   };
@@ -122,19 +163,19 @@ export default function InfoModal() {
   return (
     <div 
       onClick={() => setActiveInfoSeason(null)}
-      className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-md select-none font-sans animate-fade-in"
+      className="fixed inset-0 z-50 bg-black/70 overflow-y-auto backdrop-blur-sm flex justify-center items-start p-4 md:p-6 select-none font-sans animate-fade-in"
     >
       <div 
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-[850px] bg-[#181818] rounded-[18px] overflow-hidden my-8 shadow-[0_0_20px_rgba(0,0,0,0.8)] animate-zoom-in"
+        className="relative w-full max-w-[700px] bg-[#181818] rounded-2xl overflow-hidden my-8 shadow-[0_24px_50px_rgba(0,0,0,0.9)] border border-white/10 animate-modal-zoom-in flex flex-col"
       >
         
         {/* Hero Banner Header */}
-        <div className="relative h-64 sm:h-[480px] w-full">
+        <div className="relative aspect-video w-full rounded-t-2xl overflow-hidden bg-black/20">
           <img
             src={activeInfoSeason.thumbnailUrl || "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=800"}
             alt={activeInfoSeason.title}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover rounded-t-2xl"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-[#181818]/40 to-transparent"></div>
           <div className="absolute inset-0 bg-gradient-to-r from-[#181818]/60 via-transparent to-transparent"></div>
@@ -142,15 +183,15 @@ export default function InfoModal() {
           {/* Close Button */}
           <button
             onClick={() => setActiveInfoSeason(null)}
-            className="absolute top-4 right-4 z-30 p-2 rounded-full bg-[#181818]/60 hover:bg-[#181818] text-white transition-all duration-200 cursor-pointer"
+            className="absolute top-4 right-4 z-30 p-2 rounded-full bg-[#181818]/70 hover:bg-[#2f2f2f] text-white transition-all duration-200 cursor-pointer border border-white/10 shadow-lg"
             title="Close Details"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
           
           {/* Hero Overlay text & triggers */}
-          <div className="absolute bottom-10 left-8 md:left-12 right-8 md:right-12">
-            <h2 className="text-3xl sm:text-5xl md:text-6xl font-black mb-6 tracking-wide text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
+          <div className="absolute bottom-6 left-6 md:left-8 right-6 md:right-8">
+            <h2 className="text-2xl sm:text-4xl md:text-5xl font-black mb-4 tracking-wide text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] uppercase">
               {activeInfoSeason.title}
             </h2>
             
@@ -158,45 +199,45 @@ export default function InfoModal() {
               <button
                 onClick={handlePlaySeason}
                 disabled={episodes.length === 0}
-                className="px-6 py-2 sm:px-8 sm:py-2.5 rounded font-bold bg-white text-black hover:bg-white/80 disabled:opacity-50 transition-all duration-300 flex items-center gap-3 cursor-pointer text-base tracking-wide"
+                className="px-5 py-2 sm:px-6 sm:py-2 rounded font-bold bg-white text-black hover:bg-white/80 disabled:opacity-50 transition-all duration-300 flex items-center gap-2 cursor-pointer text-sm sm:text-base tracking-wide"
               >
-                <Play className="w-7 h-7 fill-current" />
+                <Play className="w-5 h-5 fill-current" />
                 Play
               </button>
               
               <button
                 onClick={handleToggleBookmark}
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border-2 border-white/50 text-white hover:border-white hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer bg-[#2a2a2a]/60"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-white/50 text-white hover:border-white hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer bg-[#2a2a2a]/60"
                 title={isBookmarked ? "Remove from My List" : "Add to My List"}
               >
                 {isBookmarked ? (
-                  <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
+                  <Check className="w-4.5 h-4.5 sm:w-5 sm:h-5 stroke-[3]" />
                 ) : (
-                  <Plus className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
+                  <Plus className="w-4.5 h-4.5 sm:w-5 sm:h-5 stroke-[2]" />
                 )}
               </button>
 
               <button
                 onClick={() => setShowShareModal(true)}
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border-2 border-white/50 text-white hover:border-white hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer bg-[#2a2a2a]/60"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-white/50 text-white hover:border-white hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer bg-[#2a2a2a]/60"
                 title="Share Collection"
               >
-                <Share2 className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+                <Share2 className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2]" />
               </button>
             </div>
           </div>
         </div>
 
         {/* Show Information */}
-        <div className="px-8 md:px-12 py-4 space-y-10 bg-[#181818]">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="px-6 md:px-8 py-6 space-y-8 bg-[#181818]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
             
             {/* Left side details */}
-            <div className="md:col-span-2 space-y-5">
+            <div className="md:col-span-2 space-y-4">
               <div className="flex flex-wrap items-center gap-3 text-sm sm:text-base text-white">
                 <span className="text-[#46d369] font-bold">New</span>
                 {dateRangeText && (
-                  <span className="font-medium">
+                  <span className="font-medium text-white/95">
                     {dateRangeText}
                   </span>
                 )}
@@ -209,14 +250,19 @@ export default function InfoModal() {
                 <span className="border border-white/40 text-[#a3a3a3] px-1.5 rounded-sm text-xs font-medium">
                   HD
                 </span>
+                {seriesTitle && (
+                  <span className="bg-[#e50914] text-white px-2 py-0.5 rounded-sm text-xs font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-md">
+                    Part of Series: {seriesTitle}
+                  </span>
+                )}
               </div>
-              <p className="text-white text-sm sm:text-base leading-relaxed">
+              <p className="text-white/90 text-sm sm:text-base leading-relaxed">
                 {activeInfoSeason.description || "A dogged police officer investigates a journalist's murder, even as trouble brews close to home."}
               </p>
             </div>
 
             {/* Right side attributes */}
-            <div className="text-sm space-y-3">
+            <div className="text-sm space-y-2.5">
               <div>
                 <span className="text-[#777] font-medium mr-1">Cast:</span>
                 <span className="text-white font-medium hover:underline cursor-pointer">{activeProfile?.name || "User"},</span>
@@ -252,10 +298,19 @@ export default function InfoModal() {
               </div>
             ) : (
               <div className="divide-y divide-white/5 bg-black/10 rounded-xl border border-white/5 overflow-hidden">
-                {episodes.map((episode, idx) => (
+              {episodes.map((episode, idx) => {
+                const profileId = activeProfile ? activeProfile.id : "default";
+                const key = `memoryflix_watch_count_${profileId}_ep_${episode.id}`;
+                let watchCount = 0;
+                if (typeof window !== "undefined") {
+                  watchCount = parseInt(safeLocalStorage.getItem(key) || "0", 10);
+                }
+                const showMostViewed = watchCount > 10;
+
+                return (
                   <div
                     key={episode.id}
-                    onClick={() => handlePlayEpisode(episode)}
+                    onClick={(e) => handlePlayEpisode(episode, e)}
                     className="flex flex-col sm:flex-row items-start gap-4 p-5 sm:p-6 hover:bg-white/5 transition-all duration-300 group cursor-pointer border-b border-white/5 last:border-b-0"
                   >
                     {/* Index */}
@@ -270,7 +325,14 @@ export default function InfoModal() {
                         alt={episode.title}
                         className="w-full h-full object-cover group-hover:scale-102 transition-all duration-500"
                       />
-                      
+
+                      {/* Dynamic Top-Left Most Viewed Tag */}
+                      {showMostViewed && (
+                        <div className="absolute top-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded-sm font-black text-[7px] md:text-[8px] uppercase tracking-wider bg-[#E50914] text-white border border-white/10 shadow-md select-none">
+                          Most Viewed
+                        </div>
+                      )}
+
                       {/* Play overlay button on thumbnail hover */}
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300">
                         <div className="p-2.5 rounded-full bg-black/70 border border-white/20 shadow-xl group-hover:scale-110 transition-transform">
@@ -292,7 +354,7 @@ export default function InfoModal() {
                         <h4 className="text-base sm:text-lg font-extrabold text-white group-hover:text-netflix-red transition-colors leading-tight">
                           {episode.title}
                         </h4>
-                        
+
                         <div className="flex items-center gap-2.5 text-xs text-white/40 font-bold uppercase tracking-wider">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" />
@@ -308,14 +370,15 @@ export default function InfoModal() {
                           </span>
                         </div>
                       </div>
-                      
+
                       <p className="text-white/55 text-xs sm:text-sm leading-relaxed line-clamp-3 md:line-clamp-2">
                         {episode.description || "No description provided for this memory."}
                       </p>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
+            </div>
             )}
           </div>
         </div>

@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS public.seasons (
     description TEXT,
     thumbnail_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    display_order INTEGER DEFAULT 0 NOT NULL
+    display_order INTEGER DEFAULT 0 NOT NULL,
+    featured BOOLEAN DEFAULT FALSE NOT NULL
 );
 
 -- 4. Create Episodes Table
@@ -94,3 +95,24 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS plan_name VARCHAR(50) DEFAULT 
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS storage_limit_mb BIGINT DEFAULT 500 NOT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS razorpay_subscription_id VARCHAR(255);
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(255);
+ALTER TABLE public.seasons ADD COLUMN IF NOT EXISTS featured BOOLEAN DEFAULT FALSE NOT NULL;
+
+-- 6. Create Series Table
+CREATE TABLE IF NOT EXISTS public.series (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    thumbnail_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- Migration for series relationship in seasons
+ALTER TABLE public.seasons ADD COLUMN IF NOT EXISTS series_id UUID REFERENCES public.series(id) ON DELETE SET NULL;
+
+-- Optimization Indexes for Series
+CREATE INDEX IF NOT EXISTS idx_series_profile_id ON public.series(profile_id);
+CREATE INDEX IF NOT EXISTS idx_seasons_series_id ON public.seasons(series_id);
+
+-- Disable RLS on series
+ALTER TABLE public.series DISABLE ROW LEVEL SECURITY;

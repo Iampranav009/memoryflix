@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { supabase, logout } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
-import { getCookie, setCookie, deleteCookie } from "@/lib/cookies";
+import { getCookie, setCookie, deleteCookie, safeLocalStorage } from "@/lib/cookies";
 import { 
   User, Shield, Lock, Eye, EyeOff, Tv, Volume2, Check, 
   LogOut, AlertTriangle, Key, Mail, CheckCircle2, ChevronRight,
@@ -342,10 +342,10 @@ function SettingsPageContent() {
   // Load preferences from cookies/local storage
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const storedQuality = getCookie("mf_pref_quality") || localStorage.getItem("mf_pref_quality");
-      const storedAudio = getCookie("mf_pref_audio") || localStorage.getItem("mf_pref_audio");
-      const storedAutoplayNext = getCookie("mf_pref_autoplay_next") || localStorage.getItem("mf_pref_autoplay_next");
-      const storedAutoplayPrev = getCookie("mf_pref_autoplay_prev") || localStorage.getItem("mf_pref_autoplay_prev");
+      const storedQuality = getCookie("mf_pref_quality") || safeLocalStorage.getItem("mf_pref_quality");
+      const storedAudio = getCookie("mf_pref_audio") || safeLocalStorage.getItem("mf_pref_audio");
+      const storedAutoplayNext = getCookie("mf_pref_autoplay_next") || safeLocalStorage.getItem("mf_pref_autoplay_next");
+      const storedAutoplayPrev = getCookie("mf_pref_autoplay_prev") || safeLocalStorage.getItem("mf_pref_autoplay_prev");
 
       if (storedQuality) setStreamQuality(storedQuality);
       if (storedAudio) setAudioMode(storedAudio);
@@ -449,7 +449,7 @@ function SettingsPageContent() {
 
   const savePreferences = (key: string, value: string | boolean) => {
     if (typeof window !== "undefined") {
-      localStorage.setItem(key, String(value));
+      safeLocalStorage.setItem(key, String(value));
       
       const consentCookie = getCookie("memoryflix_cookie_consent");
       let functionalAllowed = false;
@@ -483,14 +483,14 @@ function SettingsPageContent() {
 
   if (isLoading || !dbUser || !activeProfile) {
     return (
-      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white font-sans select-none overflow-x-hidden pb-16">
+    <div className="min-h-screen bg-[#000000] text-white font-sans select-none overflow-x-hidden pb-16">
       <Navbar />
 
       {/* Main Container */}
@@ -1420,7 +1420,7 @@ function SettingsPageContent() {
 export default function SettingsPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
       </div>
     }>

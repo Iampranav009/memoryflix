@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { DbProfile } from "@/types";
 import { Plus, Pencil, Trash2, X, AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
+import { safeSessionStorage } from "@/lib/cookies";
 
 const PRESET_AVATARS = [
   "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
@@ -84,9 +85,7 @@ export default function ProfilesPage() {
       setEditProfileAvatar(profile.avatarUrl);
       setShowEditModal(true);
     } else {
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("memoryflix_intro_played");
-      }
+      safeSessionStorage.removeItem("memoryflix_intro_played");
       setActiveProfile(profile);
       router.push("/browse");
     }
@@ -216,14 +215,14 @@ export default function ProfilesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white flex flex-col justify-center items-center font-sans px-6 py-16">
+    <div className="min-h-screen bg-[#000000] text-white flex flex-col justify-center items-center font-sans px-6 py-16">
       
       {/* Title */}
       <h1 className="text-4xl md:text-6xl font-bold tracking-wide mb-14 select-none text-center animate-fade-in text-white/95 netflix-text-shadow">
@@ -298,7 +297,7 @@ export default function ProfilesPage() {
       {/* ADD PROFILE MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="w-full max-w-[550px] bg-[#141414] border border-white/10 rounded-xl px-6 py-8 md:p-10 relative shadow-2xl animate-fade-in">
+          <div className="w-full max-w-[550px] bg-[#000000] border border-white/10 rounded-xl px-6 py-8 md:p-10 relative shadow-2xl animate-fade-in">
             <button 
               onClick={() => setShowAddModal(false)}
               className="absolute top-4 right-4 text-white/50 hover:text-white cursor-pointer transition-colors"
@@ -398,7 +397,7 @@ export default function ProfilesPage() {
       {/* EDIT PROFILE MODAL */}
       {showEditModal && editingProfile && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="w-full max-w-[550px] bg-[#141414] border border-white/10 rounded-xl px-6 py-8 md:p-10 relative shadow-2xl animate-fade-in">
+          <div className="w-full max-w-[550px] bg-[#000000] border border-white/10 rounded-xl px-6 py-8 md:p-10 relative shadow-2xl animate-fade-in">
             <button 
               onClick={() => {
                 setShowEditModal(false);

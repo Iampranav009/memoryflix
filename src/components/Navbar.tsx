@@ -7,6 +7,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Search, Bell, ChevronDown, LogOut, Users, Film, Bookmark, Settings, Database } from "lucide-react";
 import axios from "axios";
 import { DbProfile } from "@/types";
+import { safeSessionStorage } from "@/lib/cookies";
 
 export default function Navbar() {
   const { dbUser, activeProfile, setActiveProfile } = useStore();
@@ -89,9 +90,7 @@ export default function Navbar() {
   };
 
   const handleSwitchProfile = (profile: DbProfile) => {
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("memoryflix_intro_played");
-    }
+    safeSessionStorage.removeItem("memoryflix_intro_played");
     setActiveProfile(profile);
     setDropdownOpen(false);
     // Reload active page to scope content
@@ -113,7 +112,7 @@ export default function Navbar() {
     <nav 
       className={`fixed top-0 left-0 w-full z-40 transition-all duration-500 flex items-center justify-between px-4 sm:px-6 md:px-16 py-3 sm:py-4 select-none ${
         isScrolled 
-          ? "bg-[#141414]/95 backdrop-blur-md shadow-lg border-b border-white/5 py-2 sm:py-3" 
+          ? "bg-[#000000]/95 backdrop-blur-md shadow-lg border-b border-white/5 py-2 sm:py-3" 
           : "bg-gradient-to-b from-black/90 via-black/40 to-transparent py-4 sm:py-5"
       }`}
     >
@@ -206,7 +205,7 @@ export default function Navbar() {
             <div className="absolute right-0 mt-3.5 w-56 bg-black/95 border border-white/10 backdrop-blur-md rounded-lg shadow-2xl overflow-hidden z-50 text-xs py-2 animate-zoom-in font-sans">
               
               {/* Header profile info */}
-              <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-3 bg-[#141414]/90 mb-1.5">
+              <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-3 bg-[#000000]/90 mb-1.5">
                 <img 
                   src={activeProfile.avatarUrl || undefined} 
                   alt={activeProfile.name} 
@@ -236,9 +235,7 @@ export default function Navbar() {
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    if (typeof window !== "undefined") {
-                      sessionStorage.removeItem("memoryflix_intro_played");
-                    }
+                    safeSessionStorage.removeItem("memoryflix_intro_played");
                     router.push("/profiles");
                   }}
                   className="w-full px-4 py-2 hover:bg-white/10 text-left text-white/80 hover:text-white flex items-center gap-3 cursor-pointer transition-colors"

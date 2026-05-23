@@ -5,7 +5,30 @@ import { supabase } from "@/lib/supabase";
 import { useStore } from "@/store/useStore";
 import axios from "axios";
 import { usePathname, useRouter } from "next/navigation";
-import { getCookie } from "@/lib/cookies";
+import { getCookie, safeLocalStorage } from "@/lib/cookies";
+
+// Register global Axios interceptor to automatically attach Supabase Auth JWT token to all API requests
+let isInterceptorRegistered = false;
+if (typeof window !== "undefined" && !isInterceptorRegistered) {
+  isInterceptorRegistered = true;
+  axios.interceptors.request.use(
+    async (config) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          config.headers = config.headers || {};
+          config.headers.Authorization = `Bearer ${session.access_token}`;
+        }
+      } catch (err) {
+        console.error("Axios interceptor error getting session:", err);
+      }
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
+    }
+  );
+}
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setDbUser, setActiveProfile, setIsLoading, isLoading } = useStore();
@@ -18,6 +41,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       try {
         if (session?.user) {
           const supabaseUser = session.user;
+          
+          // Clean hash from browser address bar if it contains OAuth tokens
+          if (typeof window !== "undefined" && (window.location.hash.includes("access_token") || window.location.hash.includes("id_token") || window.location.hash.includes("refresh_token"))) {
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          }
           
           // Sync user to Supabase DB via Prisma API
           const response = await axios.post("/api/auth/sync", {
@@ -34,7 +62,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           const profilesResponse = await axios.get(`/api/profiles?userId=${syncedUser.id}`);
           const profiles = profilesResponse.data;
 
-          const storedProfileId = getCookie("memoryflix_active_profile_id") || localStorage.getItem("memoryflix_active_profile_id");
+          const storedProfileId = getCookie("memoryflix_active_profile_id") || safeLocalStorage.getItem("memoryflix_active_profile_id");
           if (storedProfileId) {
             const matchedProfile = profiles.find((p: any) => p.id === storedProfileId);
             if (matchedProfile) {
@@ -86,15 +114,54 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     };
   }, [setDbUser, setActiveProfile, setIsLoading, pathname, router]);
 
-  if (isLoading) {
+  const isPublicPage = pathname === "/login" || pathname === "/" || pathname?.startsWith("/season/share");
+
+  if (isLoading && !isPublicPage) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-[#141414] z-50">
-        <div className="flex flex-col items-center">
-          <h1 className="text-[#E50914] text-5xl font-black tracking-widest animate-pulse mb-6 select-none font-sans">
-            MEMORYFLIX
-          </h1>
-          <div className="w-12 h-12 border-4 border-[#E50914] border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#000000] text-white flex flex-col font-sans select-none overflow-hidden">
+        {/* Shimmer Header */}
+        <header className="h-16 border-b border-white/5 bg-black/60 px-6 md:px-16 flex items-center justify-between">
+          <div className="h-8 w-32 bg-zinc-800 rounded animate-pulse"></div>
+          <div className="flex gap-4">
+            <div className="h-7 w-20 bg-zinc-800 rounded animate-pulse"></div>
+            <div className="h-7 w-20 bg-zinc-800 rounded animate-pulse"></div>
+          </div>
+        </header>
+
+        {/* Shimmer Hero Banner */}
+        <div className="h-[45vh] md:h-[60vh] bg-zinc-900/40 relative flex flex-col justify-end p-6 md:p-16 space-y-4">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
+          <div className="relative space-y-3 max-w-xl">
+            <div className="h-4 w-28 bg-[#E50914]/20 rounded animate-pulse"></div>
+            <div className="h-10 w-[70%] bg-zinc-800 rounded animate-pulse"></div>
+            <div className="h-6 w-[90%] bg-zinc-850 rounded animate-pulse"></div>
+            <div className="h-6 w-[80%] bg-zinc-850 rounded animate-pulse"></div>
+            <div className="flex gap-3 pt-2">
+              <div className="h-10 w-28 bg-zinc-800 rounded animate-pulse"></div>
+              <div className="h-10 w-28 bg-zinc-800 rounded animate-pulse"></div>
+            </div>
+          </div>
         </div>
+
+        {/* Shimmer Rows */}
+        <main className="p-6 md:p-16 space-y-10">
+          {[1, 2].map((rowIdx) => (
+            <div key={rowIdx} className="space-y-4">
+              <div className="h-6 w-48 bg-zinc-800 rounded animate-pulse"></div>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {[1, 2, 3, 4, 5].map((cardIdx) => (
+                  <div 
+                    key={cardIdx} 
+                    className="aspect-video bg-zinc-900/60 border border-white/5 rounded-md p-2 flex flex-col justify-end space-y-2 animate-pulse"
+                  >
+                    <div className="h-4 w-[60%] bg-zinc-800 rounded"></div>
+                    <div className="h-3 w-[40%] bg-zinc-850 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </main>
       </div>
     );
   }

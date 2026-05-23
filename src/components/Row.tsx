@@ -2,13 +2,13 @@
 
 import { useRef, useState, useEffect } from "react";
 import MemoryCard from "./MemoryCard";
-import { DbSeason, DbEpisode } from "@/types";
+import { DbSeason, DbEpisode, DbSeries } from "@/types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface RowProps {
   title: string;
-  items: (DbSeason | DbEpisode)[];
-  type: "season" | "episode";
+  items: (DbSeason | DbEpisode | DbSeries)[];
+  type: "season" | "episode" | "series";
 }
 
 export default function Row({ title, items, type }: RowProps) {
@@ -76,13 +76,14 @@ export default function Row({ title, items, type }: RowProps) {
         <div
           ref={rowRef}
           onScroll={updateArrows}
-          className="netflix-row gap-2.5 sm:gap-4 overflow-visible pt-16 pb-32 -mt-12 -mb-28 flex items-center"
+          className="netflix-row gap-2.5 sm:gap-4 overflow-visible pt-16 pb-36 -mt-12 -mb-32 flex items-center"
         >
           {items.map((item) => (
             <MemoryCard 
               key={item.id} 
               item={item} 
               type={type} 
+              rowTitle={title}
             />
           ))}
         </div>
@@ -98,8 +99,8 @@ export default function Row({ title, items, type }: RowProps) {
         )}
 
         {/* Gradient overlays at the row borders for premium Netflix fade look */}
-        <div className="absolute top-4 bottom-4 left-[-24px] md:left-[-64px] w-2 pointer-events-none bg-gradient-to-r from-[#141414] to-transparent z-10 opacity-0 group-hover/row:opacity-100 transition-opacity duration-300"></div>
-        <div className="absolute top-4 bottom-4 right-[-24px] md:right-[-64px] w-2 pointer-events-none bg-gradient-to-l from-[#141414] to-transparent z-10 opacity-0 group-hover/row:opacity-100 transition-opacity duration-300"></div>
+        <div className="absolute top-4 bottom-4 left-[-24px] md:left-[-64px] w-2 pointer-events-none bg-gradient-to-r from-[#000000] to-transparent z-10 opacity-0 group-hover/row:opacity-100 transition-opacity duration-300"></div>
+        <div className="absolute top-4 bottom-4 right-[-24px] md:right-[-64px] w-2 pointer-events-none bg-gradient-to-l from-[#000000] to-transparent z-10 opacity-0 group-hover/row:opacity-100 transition-opacity duration-300"></div>
 
       </div>
     </div>

@@ -56,3 +56,76 @@ export const deleteCookie = (name: string) => {
 export const hasCookie = (name: string): boolean => {
   return getCookie(name) !== null;
 };
+
+/**
+ * Fallback in-memory storage for environments where localStorage is blocked (SecurityError)
+ */
+class MemoryStorage implements Storage {
+  private store: Record<string, string> = {};
+
+  getItem(key: string): string | null {
+    return this.store[key] !== undefined ? this.store[key] : null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.store[key] = String(value);
+  }
+
+  removeItem(key: string): void {
+    delete this.store[key];
+  }
+
+  clear(): void {
+    this.store = {};
+  }
+
+  get length(): number {
+    return Object.keys(this.store).length;
+  }
+
+  key(index: number): string | null {
+    return Object.keys(this.store)[index] || null;
+  }
+}
+
+let storageInstance: Storage;
+
+try {
+  if (typeof window !== "undefined" && window.localStorage) {
+    const testKey = "__storage_test__";
+    window.localStorage.setItem(testKey, testKey);
+    window.localStorage.removeItem(testKey);
+    storageInstance = window.localStorage;
+  } else {
+    storageInstance = new MemoryStorage();
+  }
+} catch (e) {
+  if (typeof window !== "undefined") {
+    console.warn("localStorage access is denied/blocked in this context. Falling back to in-memory store.");
+  }
+  storageInstance = new MemoryStorage();
+}
+
+export const safeLocalStorage = storageInstance;
+
+let sessionStorageInstance: Storage;
+
+try {
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    const testKey = "__session_storage_test__";
+    window.sessionStorage.setItem(testKey, testKey);
+    window.sessionStorage.removeItem(testKey);
+    sessionStorageInstance = window.sessionStorage;
+  } else {
+    sessionStorageInstance = new MemoryStorage();
+  }
+} catch (e) {
+  if (typeof window !== "undefined") {
+    console.warn("sessionStorage access is denied/blocked in this context. Falling back to in-memory store.");
+  }
+  sessionStorageInstance = new MemoryStorage();
+}
+
+export const safeSessionStorage = sessionStorageInstance;
+
+

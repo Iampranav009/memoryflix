@@ -418,13 +418,13 @@ export default function RootLandingPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#141414] text-white font-sans selection:bg-netflix-red selection:text-white overflow-x-hidden">
+    <div className="relative min-h-screen w-full bg-[#000000] text-white font-sans selection:bg-netflix-red selection:text-white overflow-x-hidden">
       
       {/* 1. CINEMATIC HERO & NAVBAR SECTION */}
       <section 
         className="relative min-h-screen w-full flex flex-col justify-between bg-cover bg-center bg-no-repeat z-20"
         style={{
-          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.65), rgba(20, 20, 20, 1)), url('https://images.unsplash.com/photo-1574375927938-d5a98e8edd85?q=80&w=1920&auto=format&fit=crop')"
+          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 1)), url('https://images.unsplash.com/photo-1574375927938-d5a98e8edd85?q=80&w=1920&auto=format&fit=crop')"
         }}
       >
         {/* Navigation Navbar */}
@@ -514,7 +514,7 @@ export default function RootLandingPage() {
         </div>
 
         {/* Subtle Bottom Fade Gradient */}
-        <div className="h-24 w-full bg-gradient-to-t from-[#141414] to-transparent z-10 pointer-events-none"></div>
+        <div className="h-24 w-full bg-gradient-to-t from-[#000000] to-transparent z-10 pointer-events-none"></div>
       </section>
 
 
@@ -561,7 +561,7 @@ export default function RootLandingPage() {
 
 
       {/* 3. INTERACTIVE MOCKUP SHOWCASE (LIVE DEMO) */}
-      <section className="py-20 px-6 md:px-16 bg-[#141414] relative z-25 border-t border-white/5">
+      <section className="py-20 px-6 md:px-16 bg-[#000000] relative z-25 border-t border-white/5">
         <div className="max-w-6xl mx-auto space-y-12">
           
           <div className="text-center space-y-4">
@@ -624,6 +624,24 @@ export default function RootLandingPage() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent"></div>
                     
+                    {/* Dynamic Top-Left Pill Tag */}
+                    <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-sm font-black text-[8px] sm:text-[9px] uppercase tracking-wider shadow-md bg-[#E50914] text-white border border-white/10 select-none">
+                      {show.id === "summer-2025" ? "Recently Added" : show.id === "wedding-day" ? "Loved" : show.id === "baby-leo" ? "Most Viewed" : "Trending"}
+                    </div>
+
+                    {/* Dynamic Top-Right Corner Badge */}
+                    {(show.id === "summer-2025" || show.id === "baby-leo") ? (
+                      <div className="absolute top-2 right-2 w-7 h-7 bg-[#E50914] text-white flex flex-col items-center justify-center font-black rounded-sm border border-white/20 shadow-lg leading-none z-20 select-none">
+                        <span className="text-[6px] uppercase tracking-tighter">TOP</span>
+                        <span className="text-[10px] font-extrabold -mt-0.5">10</span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-[2px] border border-[#E50914]/40 rounded px-1.5 py-0.5 flex items-center gap-1 z-20 shadow-md text-white font-extrabold text-[8px] tracking-wide select-none">
+                        <Heart className="w-2.5 h-2.5 text-[#E50914] fill-[#E50914] animate-pulse" />
+                        <span className="text-white/90">LOVED</span>
+                      </div>
+                    )}
+
                     {/* Hover Play Glow */}
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 backdrop-blur-[2px]">
                       <div className="p-3 bg-netflix-red rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
@@ -829,7 +847,7 @@ export default function RootLandingPage() {
           </div>
 
           {/* Core Screen */}
-          <div className="flex-grow flex items-center justify-center relative my-4 overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0a]">
+          <div className="flex-grow flex items-center justify-center relative my-4 overflow-hidden rounded-xl border border-white/10 bg-black">
             {playbackLoading ? (
               <div className="text-center space-y-3">
                 <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -839,7 +857,7 @@ export default function RootLandingPage() {
               <div className="absolute inset-0 flex items-center justify-center">
                 
                 {/* Realistic memory screen placeholder */}
-                <div className="absolute inset-0 bg-[#0d0d0d] flex items-center justify-center overflow-hidden">
+                <div className="absolute inset-0 bg-black flex items-center justify-center overflow-hidden">
                   {/* Rotating visual mesh to simulate active cinematic environment */}
                   <div className="absolute inset-0 bg-cover bg-center filter blur-lg opacity-25 scale-110"
                     style={{ backgroundImage: `url(${activeShow?.backdropUrl})` }}
@@ -1111,7 +1129,7 @@ export default function RootLandingPage() {
 
 
       {/* 7. NETFLIX-STYLE PREMIUM PLAN PRICE GRID */}
-      <section id="pricing" className="py-24 px-6 md:px-16 bg-[#141414] relative z-20 border-t border-white/5">
+      <section id="pricing" className="py-24 px-6 md:px-16 bg-[#000000] relative z-20 border-t border-white/5">
         <div className="max-w-5xl mx-auto space-y-16">
           
           <div className="text-center space-y-4">
@@ -1400,7 +1418,7 @@ export default function RootLandingPage() {
 
 
       {/* 9. BOTTOM FINAL HERO CALL TO ACTION */}
-      <section className="py-28 px-6 md:px-16 bg-[#141414] text-center relative overflow-hidden border-t border-white/5 z-20">
+      <section className="py-28 px-6 md:px-16 bg-[#000000] text-center relative overflow-hidden border-t border-white/5 z-20">
         
         {/* Glow backdrop */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-netflix-red/10 rounded-full blur-[140px] pointer-events-none"></div>
@@ -1431,7 +1449,7 @@ export default function RootLandingPage() {
 
 
       {/* 10. MULTI-COLUMN CINEMATIC FOOTER */}
-      <footer className="w-full bg-[#0a0a0a] border-t border-white/5 py-16 px-6 md:px-16 z-25 relative text-white/40 text-xs font-medium">
+      <footer className="w-full bg-black border-t border-white/5 py-16 px-6 md:px-16 z-25 relative text-white/40 text-xs font-medium">
         <div className="max-w-5xl mx-auto space-y-12">
           
           {/* Top customer care */}

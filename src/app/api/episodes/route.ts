@@ -3,15 +3,44 @@ import { supabase, mapEpisode } from "@/lib/supabase";
 import { s3, BUCKET_NAME } from "@/lib/s3";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { optimizeVideo } from "@/lib/videoProcessor";
+import { verifyAuth } from "@/lib/auth";
+
+// Helper: Verify that a season belongs to a profile owned by the user
+async function verifySeasonOwner(seasonId: string, userId: string): Promise<boolean> {
+  const { data: season } = await supabase
+    .from("seasons")
+    .select("profile_id")
+    .eq("id", seasonId)
+    .maybeSingle();
+
+  if (!season) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .eq("id", season.profile_id)
+    .maybeSingle();
+
+  return profile?.user_id === userId;
+}
 
 // GET episodes in a season
 export async function GET(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const seasonId = searchParams.get("seasonId");
 
     if (!seasonId) {
       return NextResponse.json({ error: "Missing seasonId" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify that the season belongs to the user
+    const isOwner = await verifySeasonOwner(seasonId, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this season" }, { status: 403 });
     }
 
     const { data: episodes, error } = await supabase
@@ -34,6 +63,9 @@ export async function GET(request: Request) {
 // POST add an episode
 export async function POST(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { 
       seasonId, 
@@ -51,6 +83,12 @@ export async function POST(request: Request) {
         { error: "Missing required fields: seasonId, title, mediaUrl, mediaType, memoryDate" },
         { status: 400 }
       );
+    }
+
+    // Authorization Check: Verify that the season belongs to the user
+    const isOwner = await verifySeasonOwner(seasonId, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this season" }, { status: 403 });
     }
 
     // Determine episode number dynamically
@@ -100,12 +138,19 @@ export async function POST(request: Request) {
 // PUT update an episode (or reorder list)
 export async function PUT(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     
     // Check if this is a bulk reordering request
     const { reorderedEpisodes } = body;
     if (reorderedEpisodes && Array.isArray(reorderedEpisodes)) {
-      // Fetch current episodes to update so that all required fields are included in the upsert
+      if (reorderedEpisodes.length === 0) {
+        return NextResponse.json({ success: true, message: "No episodes to reorder" });
+      }
+
+      // Fetch current episodes to verify they exist and obtain their season_ids
       const { data: currentEpisodes, error: fetchError } = await supabase
         .from("episodes")
         .select("*")
@@ -115,22 +160,33 @@ export async function PUT(request: Request) {
         throw fetchError;
       }
 
-      if (currentEpisodes && currentEpisodes.length > 0) {
-        const updates = currentEpisodes.map((ep: any) => {
-          const matched = reorderedEpisodes.find((r: any) => r.id === ep.id);
-          return {
-            ...ep,
-            episode_number: matched ? matched.episodeNumber : ep.episode_number,
-          };
-        });
+      if (!currentEpisodes || currentEpisodes.length === 0) {
+        return NextResponse.json({ error: "Episodes not found" }, { status: 404 });
+      }
 
-        const { error: upsertError } = await supabase
-          .from("episodes")
-          .upsert(updates);
-
-        if (upsertError) {
-          throw upsertError;
+      // Authorization Check: Verify that all unique seasons represented belong to this user
+      const uniqueSeasonIds = Array.from(new Set(currentEpisodes.map((ep: any) => ep.season_id)));
+      for (const sId of uniqueSeasonIds) {
+        const isOwner = await verifySeasonOwner(sId, user?.id || "");
+        if (!isOwner) {
+          return NextResponse.json({ error: "Forbidden: You do not own these episodes" }, { status: 403 });
         }
+      }
+
+      const updates = currentEpisodes.map((ep: any) => {
+        const matched = reorderedEpisodes.find((r: any) => r.id === ep.id);
+        return {
+          ...ep,
+          episode_number: matched ? matched.episodeNumber : ep.episode_number,
+        };
+      });
+
+      const { error: upsertError } = await supabase
+        .from("episodes")
+        .upsert(updates);
+
+      if (upsertError) {
+        throw upsertError;
       }
       
       return NextResponse.json({ success: true, message: "Order updated successfully" });
@@ -149,6 +205,23 @@ export async function PUT(request: Request) {
 
     if (!id) {
       return NextResponse.json({ error: "Missing episode ID" }, { status: 400 });
+    }
+
+    // Fetch existing episode first to verify ownership
+    const { data: existingEpisode } = await supabase
+      .from("episodes")
+      .select("season_id, media_url")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!existingEpisode) {
+      return NextResponse.json({ error: "Episode not found" }, { status: 404 });
+    }
+
+    // Authorization Check: Verify that the season belongs to the user
+    const isOwner = await verifySeasonOwner(existingEpisode.season_id, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this episode" }, { status: 403 });
     }
 
     const updateData: any = {};
@@ -170,6 +243,15 @@ export async function PUT(request: Request) {
       throw error;
     }
 
+    // Trigger video optimization if mediaUrl is updated and is different from the old one, and it is a video
+    if (mediaUrl !== undefined && mediaUrl !== existingEpisode.media_url && updatedEpisode.media_type === "video") {
+      const finalDur = durationSeconds !== undefined && durationSeconds !== null
+        ? parseInt(durationSeconds)
+        : (updatedEpisode.duration_seconds || 0);
+      optimizeVideo(updatedEpisode.id, mediaUrl, finalDur)
+        .catch(err => console.error("Background video optimization failed to start on PUT:", err));
+    }
+
     return NextResponse.json(mapEpisode(updatedEpisode));
   } catch (error: any) {
     console.error("API PUT Episode Error:", error);
@@ -180,6 +262,9 @@ export async function PUT(request: Request) {
 // DELETE an episode
 export async function DELETE(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -202,6 +287,12 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Episode not found" }, { status: 404 });
     }
 
+    // Authorization Check: Verify that the season belongs to the user
+    const isOwner = await verifySeasonOwner(deletedEpisode.season_id, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this episode" }, { status: 403 });
+    }
+
     // Delete episode
     const { error: deleteError } = await supabase
       .from("episodes")
@@ -212,19 +303,49 @@ export async function DELETE(request: Request) {
       throw deleteError;
     }
 
-    // Clean up S3 object in background
-    if (deletedEpisode.media_url && deletedEpisode.media_url.includes(".amazonaws.com/")) {
-      try {
-        const fileKey = deletedEpisode.media_url.split(".amazonaws.com/")[1];
-        if (fileKey) {
-          const deleteCommand = new DeleteObjectCommand({
-            Bucket: BUCKET_NAME,
-            Key: fileKey,
-          });
-          await s3.send(deleteCommand);
+    // Collect all URLs to delete from S3
+    const urlsToDelete: string[] = [];
+    if (deletedEpisode.media_url) {
+      const mediaUrlStr = deletedEpisode.media_url;
+      if (mediaUrlStr.startsWith("[") || mediaUrlStr.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(mediaUrlStr);
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (item.low) urlsToDelete.push(item.low);
+              if (item.medium) urlsToDelete.push(item.medium);
+              if (item.high) urlsToDelete.push(item.high);
+              if (item.url) urlsToDelete.push(item.url);
+            }
+          } else {
+            if (parsed.low) urlsToDelete.push(parsed.low);
+            if (parsed.medium) urlsToDelete.push(parsed.medium);
+            if (parsed.high) urlsToDelete.push(parsed.high);
+            if (parsed.url) urlsToDelete.push(parsed.url);
+          }
+        } catch (e) {
+          urlsToDelete.push(mediaUrlStr);
         }
-      } catch (s3Error) {
-        console.error("Failed to delete S3 file during episode deletion:", s3Error);
+      } else {
+        urlsToDelete.push(mediaUrlStr);
+      }
+    }
+
+    // Clean up S3 objects in background
+    for (const url of urlsToDelete) {
+      if (url && url.includes(".amazonaws.com/")) {
+        try {
+          const fileKey = url.split(".amazonaws.com/")[1];
+          if (fileKey) {
+            const deleteCommand = new DeleteObjectCommand({
+              Bucket: BUCKET_NAME,
+              Key: fileKey,
+            });
+            await s3.send(deleteCommand);
+          }
+        } catch (s3Error) {
+          console.error(`Failed to delete S3 file ${url} during episode deletion:`, s3Error);
+        }
       }
     }
 

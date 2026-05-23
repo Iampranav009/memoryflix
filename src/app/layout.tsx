@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import CookieBanner from "@/components/CookieBanner";
+import { Analytics } from "@vercel/analytics/react";
 
 export const metadata: Metadata = {
   title: "MemoryFlix — Replay Your Life's Moments",
@@ -62,10 +63,11 @@ export default function RootLayout({
       className="h-full antialiased"
       suppressHydrationWarning
     >
-      <body className="min-h-full bg-[#141414] text-white flex flex-col font-sans" suppressHydrationWarning>
+      <body className="min-h-full bg-[#000000] text-white flex flex-col font-sans" suppressHydrationWarning>
         <AuthProvider>
           {children}
           <CookieBanner />
+          <Analytics />
         </AuthProvider>
       </body>
     </html>

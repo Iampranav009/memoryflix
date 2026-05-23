@@ -22,10 +22,12 @@ import {
   X,
   AlertTriangle,
   HelpCircle,
-  Play
+  Play,
+  GripVertical
 } from "lucide-react";
 import axios from "axios";
 import { DbSeason, DbEpisode } from "@/types";
+import { safeLocalStorage } from "@/lib/cookies";
 
 const VIBE_PRESETS = [
   { name: "Love Vibes", url: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=500" },
@@ -118,7 +120,7 @@ export default function ShareSeasonPage({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Thumbnail options states
-  const [thumbnailMode, setThumbnailMode] = useState<"auto" | "vibe" | "custom">("auto");
+  const [thumbnailMode, setThumbnailMode] = useState<"auto" | "vibe" | "custom">("custom");
   const [selectedVibeUrl, setSelectedVibeUrl] = useState(VIBE_PRESETS[0].url);
   const [customThumbnailFile, setCustomThumbnailFile] = useState<File | null>(null);
   const [extractedFrameBlob, setExtractedFrameBlob] = useState<Blob | null>(null);
@@ -137,6 +139,10 @@ export default function ShareSeasonPage({
     message: string;
     troubleshooting?: string[];
   } | null>(null);
+
+  // Drag and Drop states for Episodes reordering
+  const [draggedEpisodeIdx, setDraggedEpisodeIdx] = useState<number | null>(null);
+  const [dragOverEpisodeIdx, setDragOverEpisodeIdx] = useState<number | null>(null);
 
   // Fetch season details
   const fetchSeasonDetails = async () => {
@@ -174,7 +180,7 @@ export default function ShareSeasonPage({
 
     if (typeof window !== "undefined") {
       try {
-        const sharedListString = localStorage.getItem("memoryflix_shared_seasons") || "[]";
+        const sharedListString = safeLocalStorage.getItem("memoryflix_shared_seasons") || "[]";
         const sharedList = JSON.parse(sharedListString);
         
         // Filter out duplicate IDs
@@ -193,7 +199,7 @@ export default function ShareSeasonPage({
           shareUrl: window.location.href
         });
         
-        localStorage.setItem("memoryflix_shared_seasons", JSON.stringify(updatedList));
+        safeLocalStorage.setItem("memoryflix_shared_seasons", JSON.stringify(updatedList));
       } catch (err) {
         console.error("Error writing to shared seasons registry:", err);
       }
@@ -346,7 +352,7 @@ export default function ShareSeasonPage({
       setDescription("");
       setMemoryDate(new Date().toISOString().split("T")[0]);
       setSelectedFile(null);
-      setThumbnailMode("auto");
+      setThumbnailMode("custom");
       setCustomThumbnailFile(null);
       setExtractedFrameBlob(null);
 
@@ -428,6 +434,39 @@ export default function ShareSeasonPage({
     }
   };
 
+  const handleEpisodeDrop = async (draggedIdx: number, targetIdx: number) => {
+    if (access !== "editor") return;
+    if (draggedIdx === targetIdx) return;
+    const listCopy = [...episodes];
+    const draggedItem = listCopy[draggedIdx];
+    listCopy.splice(draggedIdx, 1);
+    listCopy.splice(targetIdx, 0, draggedItem);
+
+    const reorderedPayload = listCopy.map((ep, idx) => ({
+      id: ep.id,
+      episodeNumber: idx + 1
+    }));
+
+    setEpisodes(listCopy);
+
+    try {
+      await axios.put("/api/episodes", {
+        reorderedEpisodes: reorderedPayload
+      });
+    } catch (err: any) {
+      console.error("Error saving episode order:", err);
+      setErrorDetails({
+        title: "Reorder Sync Failed",
+        message: err.message || "Could not synchronize the new episode rank order to database.",
+        troubleshooting: [
+          "Verify connectivity to the database.",
+          "Ensure no RLS policies are blocking the write operation."
+        ]
+      });
+      fetchSeasonDetails();
+    }
+  };
+
   const handleDeleteEpisode = async (episodeId: string, episodeTitle: string) => {
     if (access !== "editor") return;
     const confirmDelete = window.confirm(`Are you sure you want to delete memory "${episodeTitle}"?`);
@@ -470,7 +509,7 @@ export default function ShareSeasonPage({
   // 1. LOADING SCREEN
   if (loading || !season) {
     return (
-      <div className="min-h-screen bg-[#141414] text-white flex flex-col items-center justify-center font-sans">
+      <div className="min-h-screen bg-[#000000] text-white flex flex-col items-center justify-center font-sans">
         <Navbar />
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-12 h-12 text-[#E50914] animate-spin" />
@@ -483,7 +522,7 @@ export default function ShareSeasonPage({
   // 2. PROFILE ONBOARDING SPLASH SCREEN
   if (!hasEntered) {
     return (
-      <div className="min-h-screen bg-[#141414] text-white flex flex-col items-center justify-center font-sans relative overflow-hidden select-none animate-fade-in">
+      <div className="min-h-screen bg-[#000000] text-white flex flex-col items-center justify-center font-sans relative overflow-hidden select-none animate-fade-in">
         
         {/* Minimal header */}
         <div className="absolute top-8 left-8 md:left-16 flex items-center justify-between w-[90%] pointer-events-none">
@@ -532,7 +571,7 @@ export default function ShareSeasonPage({
         </div>
 
         {/* Cinematic abstract background elements */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-black/80"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-[#000000] via-transparent to-black/80"></div>
         <div 
           className="absolute inset-0 bg-cover bg-center opacity-10 brightness-[0.25] blur-sm scale-102"
           style={{ backgroundImage: `url(${season.thumbnailUrl || "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=800"})` }}
@@ -543,13 +582,13 @@ export default function ShareSeasonPage({
 
   // 3. MAIN DASHBOARD VIEW
   return (
-    <div className="min-h-screen bg-[#141414] text-white pb-24 font-sans select-none overflow-x-hidden relative">
+    <div className="min-h-screen bg-[#000000] text-white pb-24 font-sans select-none overflow-x-hidden relative">
       
       {/* Navbar rendered if logged in. Minimal custom back header otherwise */}
       {activeProfile ? (
         <Navbar />
       ) : (
-        <header className="fixed top-0 left-0 w-full z-40 bg-[#141414]/90 backdrop-blur-md shadow-lg border-b border-white/5 py-4 px-6 md:px-16 flex items-center justify-between">
+        <header className="fixed top-0 left-0 w-full z-40 bg-[#000000]/90 backdrop-blur-md shadow-lg border-b border-white/5 py-4 px-6 md:px-16 flex items-center justify-between">
           <img 
             src="/long_logo.png" 
             alt="MemoryFlix Logo"
@@ -699,11 +738,52 @@ export default function ShareSeasonPage({
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {episodes.map((ep, idx) => (
-                      <tr key={ep.id} className="hover:bg-white/5 transition-colors group">
+                      <tr 
+                        key={ep.id} 
+                        draggable={access === "editor"}
+                        onDragStart={(e) => {
+                          if (access !== "editor") return;
+                          setDraggedEpisodeIdx(idx);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e) => {
+                          if (access !== "editor") return;
+                          e.preventDefault();
+                          if (draggedEpisodeIdx !== idx) {
+                            setDragOverEpisodeIdx(idx);
+                          }
+                        }}
+                        onDragLeave={() => setDragOverEpisodeIdx(null)}
+                        onDrop={(e) => {
+                          if (access !== "editor") return;
+                          e.preventDefault();
+                          if (draggedEpisodeIdx !== null && draggedEpisodeIdx !== idx) {
+                            handleEpisodeDrop(draggedEpisodeIdx, idx);
+                          }
+                          setDraggedEpisodeIdx(null);
+                          setDragOverEpisodeIdx(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedEpisodeIdx(null);
+                          setDragOverEpisodeIdx(null);
+                        }}
+                        className={`transition-all duration-200 border-b border-white/5 ${
+                          draggedEpisodeIdx === idx 
+                            ? "opacity-30 bg-zinc-800/80 border-dashed border-[#E50914]" 
+                            : dragOverEpisodeIdx === idx 
+                            ? "bg-red-950/20 border-t-2 border-t-[#E50914] scale-[1.01] shadow-lg" 
+                            : "hover:bg-white/5"
+                        } group`}
+                      >
                         
                         {/* Episode number */}
                         <td className="py-4 px-4 text-center font-black text-white/40 group-hover:text-white text-base">
-                          {ep.episodeNumber}
+                          <div className="flex items-center justify-center gap-1">
+                            {access === "editor" && (
+                              <GripVertical className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 hover:opacity-100 cursor-grab active:cursor-grabbing text-[#808080] transition-opacity flex-shrink-0" />
+                            )}
+                            <span>{ep.episodeNumber}</span>
+                          </div>
                         </td>
                         
                         {/* Poster and Title details */}
@@ -803,7 +883,7 @@ export default function ShareSeasonPage({
         <div className="fixed inset-0 z-50 bg-black/80 flex justify-end font-sans overflow-hidden select-none backdrop-blur-sm animate-fade-in">
           <div onClick={() => !uploading && setShowAddDrawer(false)} className="absolute inset-0 cursor-pointer"></div>
           
-          <div className="relative w-full max-w-[500px] h-full bg-[#141414] border-l border-white/10 shadow-2xl p-6 md:p-8 flex flex-col justify-between z-10 animate-slide-in">
+          <div className="relative w-full max-w-[500px] h-full bg-[#000000] border-l border-white/10 shadow-2xl p-6 md:p-8 flex flex-col justify-between z-10 overflow-y-auto animate-slide-in">
             
             <div>
               <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
@@ -907,10 +987,10 @@ export default function ShareSeasonPage({
                   <div className="grid grid-cols-3 gap-2 bg-[#222]/60 p-1 rounded border border-white/5 text-xs text-center font-bold">
                     <button
                       type="button"
-                      onClick={() => setThumbnailMode("auto")}
-                      className={`py-1.5 rounded transition-all cursor-pointer ${thumbnailMode === "auto" ? "bg-white text-black font-extrabold shadow" : "text-white/60 hover:text-white"}`}
+                      onClick={() => setThumbnailMode("custom")}
+                      className={`py-1.5 rounded transition-all cursor-pointer ${thumbnailMode === "custom" ? "bg-white text-black font-extrabold shadow" : "text-white/60 hover:text-white"}`}
                     >
-                      Auto Frame
+                      Custom File
                     </button>
                     <button
                       type="button"
@@ -921,60 +1001,14 @@ export default function ShareSeasonPage({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setThumbnailMode("custom")}
-                      className={`py-1.5 rounded transition-all cursor-pointer ${thumbnailMode === "custom" ? "bg-white text-black font-extrabold shadow" : "text-white/60 hover:text-white"}`}
+                      onClick={() => setThumbnailMode("auto")}
+                      className={`py-1.5 rounded transition-all cursor-pointer ${thumbnailMode === "auto" ? "bg-white text-black font-extrabold shadow" : "text-white/60 hover:text-white"}`}
                     >
-                      Custom File
+                      Auto Frame
                     </button>
                   </div>
 
-                  {/* Option 1: Auto Frame */}
-                  {thumbnailMode === "auto" && (
-                    <div className="p-3 bg-black/30 border border-white/5 rounded text-xs text-white/50 leading-relaxed space-y-2">
-                      <p>
-                        {selectedFile?.type.startsWith("video/") 
-                          ? "The system will capture the first frame of your video automatically to use as the cover preview."
-                          : "For images, the uploaded image itself is automatically used as the thumbnail."}
-                      </p>
-                      {selectedFile?.type.startsWith("video/") && extractedFrameBlob && (
-                        <div className="relative w-32 aspect-video rounded overflow-hidden border border-white/15 bg-black">
-                          <img 
-                            src={URL.createObjectURL(extractedFrameBlob)} 
-                            className="w-full h-full object-cover" 
-                            alt="Extracted frame preview" 
-                          />
-                          <span className="absolute bottom-1 left-1 px-1 py-0.2 bg-black/80 text-[8px] text-green-400 font-bold uppercase rounded border border-green-500/10">
-                            Auto Extracted
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Option 2: Vibe Preset */}
-                  {thumbnailMode === "vibe" && (
-                    <div className="space-y-3 p-3 bg-black/30 border border-white/5 rounded">
-                      <div className="grid grid-cols-4 gap-2 max-h-[140px] overflow-y-auto pr-1">
-                        {VIBE_PRESETS.map((vibe, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => setSelectedVibeUrl(vibe.url)}
-                            className={`cursor-pointer rounded overflow-hidden aspect-video border-2 transition-all relative group/vibe ${
-                              selectedVibeUrl === vibe.url ? "border-[#E50914] scale-105" : "border-transparent hover:scale-102"
-                            }`}
-                            title={vibe.name}
-                          >
-                            <img src={vibe.url} className="w-full h-full object-cover" alt={vibe.name} />
-                            <div className="absolute inset-x-0 bottom-0 bg-black/80 py-0.5 text-[8px] text-center font-bold truncate text-white border-t border-white/5">
-                              {vibe.name}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Option 3: Custom Upload File */}
+                  {/* Option 1: Custom Upload File */}
                   {thumbnailMode === "custom" && (
                     <div className="space-y-3 p-3 bg-black/30 border border-white/5 rounded">
                       <div className="relative border border-dashed border-white/20 hover:border-white/40 rounded p-4 text-center cursor-pointer transition-colors bg-[#2f2f2f]/20 hover:bg-[#2f2f2f]/40">
@@ -1001,6 +1035,52 @@ export default function ShareSeasonPage({
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Option 2: Vibe Preset */}
+                  {thumbnailMode === "vibe" && (
+                    <div className="space-y-3 p-3 bg-black/30 border border-white/5 rounded">
+                      <div className="grid grid-cols-4 gap-2 max-h-[140px] overflow-y-auto pr-1">
+                        {VIBE_PRESETS.map((vibe, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => setSelectedVibeUrl(vibe.url)}
+                            className={`cursor-pointer rounded overflow-hidden aspect-video border-2 transition-all relative group/vibe ${
+                              selectedVibeUrl === vibe.url ? "border-[#E50914] scale-105" : "border-transparent hover:scale-102"
+                            }`}
+                            title={vibe.name}
+                          >
+                            <img src={vibe.url} className="w-full h-full object-cover" alt={vibe.name} />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/80 py-0.5 text-[8px] text-center font-bold truncate text-white border-t border-white/5">
+                              {vibe.name}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Option 3: Auto Frame */}
+                  {thumbnailMode === "auto" && (
+                    <div className="p-3 bg-black/30 border border-white/5 rounded text-xs text-white/50 leading-relaxed space-y-2">
+                      <p>
+                        {selectedFile?.type.startsWith("video/") 
+                          ? "The system will capture the first frame of your video automatically to use as the cover preview."
+                          : "For images, the uploaded image itself is automatically used as the thumbnail."}
+                      </p>
+                      {selectedFile?.type.startsWith("video/") && extractedFrameBlob && (
+                        <div className="relative w-32 aspect-video rounded overflow-hidden border border-white/15 bg-black">
+                          <img 
+                            src={URL.createObjectURL(extractedFrameBlob)} 
+                            className="w-full h-full object-cover" 
+                            alt="Extracted frame preview" 
+                          />
+                          <span className="absolute bottom-1 left-1 px-1 py-0.2 bg-black/80 text-[8px] text-green-400 font-bold uppercase rounded border border-green-500/10">
+                            Auto Extracted
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

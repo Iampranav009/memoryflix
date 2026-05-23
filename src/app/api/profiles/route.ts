@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server";
 import { supabase, mapProfile } from "@/lib/supabase";
+import { verifyAuth } from "@/lib/auth";
 
 // GET profiles for a user
 export async function GET(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    }
+
+    // Authorization Check: Enforce that the user can only fetch their own profiles
+    if (user?.id !== userId) {
+      return NextResponse.json({ error: "Forbidden: You do not have access to these profiles" }, { status: 403 });
     }
 
     const { data: profiles, error } = await supabase
@@ -31,11 +40,19 @@ export async function GET(request: Request) {
 // POST create a profile
 export async function POST(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { userId, name, avatarUrl } = body;
 
     if (!userId || !name || !avatarUrl) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // Authorization Check: Enforce that the user can only create a profile for themselves
+    if (user?.id !== userId) {
+      return NextResponse.json({ error: "Forbidden: You cannot create a profile for another user" }, { status: 403 });
     }
 
     // Check profile limit (max 6)
@@ -76,11 +93,30 @@ export async function POST(request: Request) {
 // PUT update a profile
 export async function PUT(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { id, name, avatarUrl } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing profile ID" }, { status: 400 });
+    }
+
+    // Authorization Check: Fetch profile and verify ownership
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingProfile) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+
+    if (existingProfile.user_id !== user?.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
     }
 
     const updateData: any = {};
@@ -108,11 +144,30 @@ export async function PUT(request: Request) {
 // DELETE a profile
 export async function DELETE(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
     if (!id) {
       return NextResponse.json({ error: "Missing profile ID" }, { status: 400 });
+    }
+
+    // Authorization Check: Fetch profile and verify ownership
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingProfile) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+
+    if (existingProfile.user_id !== user?.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
     }
 
     const { error } = await supabase

@@ -103,12 +103,30 @@ export const mapSeason = (season: any) => {
     createdAt: season.created_at,
     displayOrder: season.display_order,
     featured: season.featured,
+    seriesId: season.series_id || null,
     episodes: undefined as any,
   };
   if (season.episodes && Array.isArray(season.episodes)) {
     mapped.episodes = season.episodes
       .map(mapEpisode)
       .sort((a: any, b: any) => a.episodeNumber - b.episodeNumber);
+  }
+  return mapped;
+};
+
+export const mapSeries = (series: any) => {
+  if (!series) return null;
+  const mapped: any = {
+    id: series.id,
+    profileId: series.profile_id,
+    title: series.title,
+    description: series.description,
+    thumbnailUrl: series.thumbnail_url,
+    createdAt: series.created_at,
+    seasons: undefined as any,
+  };
+  if (series.seasons && Array.isArray(series.seasons)) {
+    mapped.seasons = series.seasons.map(mapSeason).filter(Boolean);
   }
   return mapped;
 };

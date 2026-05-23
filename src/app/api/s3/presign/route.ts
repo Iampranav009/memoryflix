@@ -3,9 +3,13 @@ import { s3, BUCKET_NAME } from "@/lib/s3";
 import { PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { supabase } from "@/lib/supabase";
+import { verifyAuth } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { userId, profileId, seasonId, filename, contentType, fileSize } = body;
 
@@ -16,7 +20,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Server-side safety enforcer: calculate current usage in S3 and check 50 GB limit
+    // Authorization Check: Enforce that the user can only upload files for their own account
+    if (user?.id !== userId) {
+      return NextResponse.json({ error: "Forbidden: You cannot upload files for another user" }, { status: 403 });
+    }
+
+    // Server-side safety enforcer: calculate current usage in S3 and check storage limits
     const prefix = `memoryflix/${userId}/`;
     const listCommand = new ListObjectsV2Command({
       Bucket: BUCKET_NAME,

@@ -19,6 +19,16 @@ export interface DbProfile {
   createdAt: string;
 }
 
+export interface DbSeries {
+  id: string;
+  profileId: string;
+  title: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  createdAt: string;
+  seasons?: DbSeason[];
+}
+
 export interface DbSeason {
   id: string;
   profileId: string;
@@ -32,6 +42,7 @@ export interface DbSeason {
   isShared?: boolean;
   shareUrl?: string;
   featured?: boolean;
+  seriesId?: string | null;
 }
 
 export interface DbEpisode {
@@ -46,6 +57,11 @@ export interface DbEpisode {
   memoryDate: string;
   durationSeconds: number | null;
   createdAt: string;
+}
+
+export interface MediaSegment {
+  url: string;
+  duration: number;
 }
 
 export interface DbMyList {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
-import { Play, Pause, X, RotateCcw, Volume2, VolumeX, Maximize2, SkipForward, SkipBack, Image, ChevronLeft, ChevronRight, PauseOctagon } from "lucide-react";
+import { Play, Pause, X, RotateCcw, Volume2, VolumeX, Maximize2, SkipForward, SkipBack, Image, ChevronLeft, ChevronRight, PauseOctagon, Settings, Check } from "lucide-react";
 import { DbEpisode } from "@/types";
 import axios from "axios";
 
@@ -78,7 +78,14 @@ export default function MediaPlayer() {
 
   // Multi-video sequence states
   const [currentSubVideoIndex, setCurrentSubVideoIndex] = useState(0);
+  const [resolvedVideoUrl, setResolvedVideoUrl] = useState<string>("");
   const pendingSeekTimeRef = useRef<number | null>(null);
+  const lastSubVideoIndexRef = useRef(0);
+
+  // Quality & Settings states
+  const [selectedQuality, setSelectedQuality] = useState<"auto" | "low" | "medium" | "high">("auto");
+  const [activeQuality, setActiveQuality] = useState<"low" | "medium" | "high">("high");
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -88,15 +95,41 @@ export default function MediaPlayer() {
   const subVideos = (() => {
     if (!activePlaybackEpisode) return [];
     if (activePlaybackEpisode.mediaType !== "video") return [];
-    if (activePlaybackEpisode.mediaUrl.startsWith("[")) {
+    
+    const urlSource = resolvedVideoUrl || activePlaybackEpisode.mediaUrl;
+    if (!urlSource) return [];
+
+    if (urlSource.startsWith("[")) {
       try {
-        return JSON.parse(activePlaybackEpisode.mediaUrl) as { url: string; duration: number }[];
+        return JSON.parse(urlSource) as { url?: string; low?: string; medium?: string; high?: string; duration: number }[];
       } catch (e) {
         console.error("Error parsing multi-video URL sequence:", e);
       }
+    } else if (urlSource.startsWith("{")) {
+      try {
+        const qualities = JSON.parse(urlSource) as { low?: string; medium?: string; high?: string };
+        return [{
+          low: qualities.low,
+          medium: qualities.medium,
+          high: qualities.high,
+          url: qualities.medium || qualities.high || qualities.low || "",
+          duration: activePlaybackEpisode.durationSeconds || 0
+        }];
+      } catch (e) {
+        console.error("Error parsing single video qualities:", e);
+      }
     }
-    return [{ url: activePlaybackEpisode.mediaUrl, duration: activePlaybackEpisode.durationSeconds || 0 }];
+    return [{ url: urlSource, duration: activePlaybackEpisode.durationSeconds || 0 }];
   })();
+
+  const getSegmentUrl = (segment: any, quality: "low" | "medium" | "high"): string => {
+    if (!segment) return "";
+    if (segment[quality]) return segment[quality];
+    if (segment.medium) return segment.medium;
+    if (segment.high) return segment.high;
+    if (segment.low) return segment.low;
+    return segment.url || "";
+  };
 
   const totalDuration = subVideos.reduce((acc, v) => acc + (v.duration || 0), 0);
   const combinedDuration = subVideos.length > 1 ? totalDuration : (duration || activePlaybackEpisode?.durationSeconds || 0);
@@ -106,6 +139,8 @@ export default function MediaPlayer() {
     const priorDuration = subVideos.slice(0, currentSubVideoIndex).reduce((acc, v) => acc + (v.duration || 0), 0);
     return priorDuration + currentTime;
   })();
+
+  const sliderPercentage = combinedDuration > 0 ? (cumulativeTime / combinedDuration) * 100 : 0;
 
   // Skip intro helper
   const skipIntro = () => {
@@ -132,7 +167,6 @@ export default function MediaPlayer() {
   const [previewVisible, setPreviewVisible] = useState<boolean>(false);
   const [previewPositionPercent, setPreviewPositionPercent] = useState<number>(0);
   const [activeCue, setActiveCue] = useState<PreviewCue | null>(null);
-  const [resolvedVideoUrl, setResolvedVideoUrl] = useState<string>("");
   const sliderRef = useRef<HTMLInputElement>(null);
   const sliderContainerRef = useRef<HTMLDivElement>(null);
 
@@ -169,6 +203,7 @@ export default function MediaPlayer() {
     setIsPlaying(true);
     setCurrentTime(0);
     setCurrentSubVideoIndex(0);
+    lastSubVideoIndexRef.current = 0;
     setSlideshowProgress(0);
     pendingSeekTimeRef.current = null;
     setResolvedVideoUrl("");
@@ -217,18 +252,130 @@ export default function MediaPlayer() {
 
   const isVideo = activePlaybackEpisode?.mediaType === "video";
   const videoSrc = (isVideo && introActive)
-    ? "/netflix _intro_1080p.mp4"
-    : (resolvedVideoUrl || subVideos[currentSubVideoIndex]?.url || activePlaybackEpisode?.mediaUrl || "");
+    ? "/netflix_intro_1080p.mp4"
+    : (getSegmentUrl(subVideos[currentSubVideoIndex], activeQuality) || "/netflix_intro_1080p.mp4");
 
-  // Handle dynamic source loading & play state
+  // Handle programmatic play for intro video
+  useEffect(() => {
+    if (isVideo && introActive && videoRef.current) {
+      videoRef.current.load();
+      videoRef.current.play().catch(err => {
+        console.warn("Autoplay of intro blocked or failed:", err);
+        setIsPlaying(false);
+      });
+    }
+  }, [isVideo, introActive]);
+
+  // Handle dynamic source loading & play state for main video content
   useEffect(() => {
     if (isVideo && !introActive && videoRef.current) {
+      const indexChanged = lastSubVideoIndexRef.current !== currentSubVideoIndex;
+      lastSubVideoIndexRef.current = currentSubVideoIndex;
+
+      if (indexChanged) {
+        // If the segment index changed (either natural advance or seek-triggered),
+        // we do NOT preserve the currentPos of the previous segment.
+        // It has either been set by triggerSeekToTime, or it should remain null to start at 0.
+      } else {
+        // Same segment (e.g. quality change). Preserve current position.
+        const currentPos = videoRef.current.currentTime;
+        if (currentPos > 0.1) {
+          pendingSeekTimeRef.current = currentPos;
+        }
+      }
+      
       videoRef.current.load();
       if (isPlaying) {
-        videoRef.current.play().catch(err => console.log("Video source change play error:", err));
+        videoRef.current.play().catch(err => {
+          console.log("Video source change play error:", err);
+          setIsPlaying(false);
+        });
       }
     }
-  }, [videoSrc, introActive, isVideo]);
+  }, [videoSrc, introActive, isVideo, currentSubVideoIndex]);
+
+  // Adaptive streaming logic
+  useEffect(() => {
+    if (selectedQuality !== "auto") {
+      setActiveQuality(selectedQuality);
+      return;
+    }
+
+    const determineNetworkQuality = (): "low" | "medium" | "high" => {
+      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      if (conn && conn.downlink) {
+        const downlink = conn.downlink; // in Mbps
+        if (downlink >= 5) return "high";
+        if (downlink >= 1.5) return "medium";
+        return "low";
+      }
+      return "high"; // default fallback
+    };
+
+    setActiveQuality(determineNetworkQuality());
+
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    let smoothPlaybackTimer: NodeJS.Timeout | null = null;
+    let lastStallTime = 0;
+
+    const handleWaiting = () => {
+      if (selectedQuality !== "auto") return;
+      const now = Date.now();
+      if (now - lastStallTime < 5000) return;
+      lastStallTime = now;
+
+      setActiveQuality(prev => {
+        if (prev === "high") {
+          console.log("[AdaptiveStreaming] Stalled. Downgrading High -> Medium");
+          return "medium";
+        }
+        if (prev === "medium") {
+          console.log("[AdaptiveStreaming] Stalled. Downgrading Medium -> Low");
+          return "low";
+        }
+        return "low";
+      });
+    };
+
+    const handlePlaying = () => {
+      if (selectedQuality !== "auto") return;
+      if (smoothPlaybackTimer) clearTimeout(smoothPlaybackTimer);
+      smoothPlaybackTimer = setTimeout(() => {
+        const currentSpeed = determineNetworkQuality();
+        setActiveQuality(prev => {
+          if (prev === "low" && currentSpeed !== "low") {
+            console.log("[AdaptiveStreaming] Smooth playback. Upgrading Low -> Medium");
+            return "medium";
+          }
+          if (prev === "medium" && currentSpeed === "high") {
+            console.log("[AdaptiveStreaming] Smooth playback. Upgrading Medium -> High");
+            return "high";
+          }
+          return prev;
+        });
+      }, 15000);
+    };
+
+    const handlePauseOrStall = () => {
+      if (smoothPlaybackTimer) {
+        clearTimeout(smoothPlaybackTimer);
+        smoothPlaybackTimer = null;
+      }
+    };
+
+    videoEl.addEventListener("waiting", handleWaiting);
+    videoEl.addEventListener("playing", handlePlaying);
+    videoEl.addEventListener("pause", handlePauseOrStall);
+
+    return () => {
+      videoEl.removeEventListener("waiting", handleWaiting);
+      videoEl.removeEventListener("playing", handlePlaying);
+      videoEl.removeEventListener("pause", handlePauseOrStall);
+      if (smoothPlaybackTimer) clearTimeout(smoothPlaybackTimer);
+    };
+  }, [selectedQuality, isVideo, introActive]);
 
   // Handle controls hide timer
   const handleMouseMove = () => {
@@ -363,12 +510,10 @@ export default function MediaPlayer() {
   // Video playback listeners
   const togglePlay = () => {
     if (activePlaybackEpisode?.mediaType === "video" && videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      } else {
+      if (videoRef.current.paused) {
         videoRef.current.play().catch(err => console.log(err));
-        setIsPlaying(true);
+      } else {
+        videoRef.current.pause();
       }
     } else if (activePlaybackEpisode?.mediaType === "photo") {
       setSlideshowActive(!slideshowActive);
@@ -476,6 +621,7 @@ export default function MediaPlayer() {
     <div 
       ref={playerContainerRef}
       onMouseMove={handleMouseMove}
+      onClick={() => setShowSettingsMenu(false)}
       className="fixed inset-0 bg-black z-50 flex items-center justify-center font-sans overflow-hidden select-none"
     >
       
@@ -516,9 +662,17 @@ export default function MediaPlayer() {
             ref={videoRef}
             src={videoSrc || undefined}
             autoPlay
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onEnded={handleVideoEnded}
+            onError={() => {
+              if (introActive) {
+                console.warn("Failed to play intro video, skipping to content.");
+                skipIntro();
+              }
+            }}
             onClick={togglePlay}
             className="w-full h-full object-contain cursor-pointer"
           />
@@ -603,10 +757,10 @@ export default function MediaPlayer() {
                       {/* Timeline Preview Thumbnail Tooltip */}
                       {previewVisible && activeCue && (
                         <div 
-                          className="absolute bottom-full mb-3 pointer-events-none flex flex-col items-center z-50 transition-opacity duration-150"
+                          className="absolute bottom-full mb-3 pointer-events-none flex flex-col items-center z-50 transition-all duration-200 origin-bottom"
                           style={{ 
                             left: `${previewPositionPercent}%`, 
-                            transform: 'translateX(-50%)' 
+                            transform: 'translateX(-50%) scale(1.3)' 
                           }}
                         >
                           <div 
@@ -632,7 +786,10 @@ export default function MediaPlayer() {
                         max={combinedDuration || 0}
                         value={cumulativeTime}
                         onChange={handleSeek}
-                        className="w-full h-1.5 bg-[#666]/50 rounded-lg appearance-none cursor-pointer accent-[#E50914] focus:outline-none transition-all duration-300 group-hover:h-2"
+                        style={{
+                          background: `linear-gradient(to right, #E50914 0%, #E50914 ${sliderPercentage}%, rgba(255, 255, 255, 0.3) ${sliderPercentage}%, rgba(255, 255, 255, 0.3) 100%)`
+                        }}
+                        className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-[#E50914] focus:outline-none transition-all duration-300 group-hover:h-2"
                       />
                     </div>
                     <span className="text-white text-xs md:text-sm font-bold min-w-16 text-right tabular-nums">
@@ -739,6 +896,52 @@ export default function MediaPlayer() {
                   >
                     <SkipForward className="w-5 h-5 fill-current" />
                   </button>
+                </div>
+
+                {/* Settings / Quality Selection */}
+                <div className="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSettingsMenu(!showSettingsMenu);
+                    }}
+                    className="text-white hover:text-[#E50914] hover:scale-110 transition-all p-1 cursor-pointer"
+                    title="Settings"
+                  >
+                    <Settings className="w-6 h-6" />
+                  </button>
+                  
+                  {showSettingsMenu && (
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-full right-0 mb-3 bg-[#181818]/95 border border-white/10 rounded-md p-3.5 shadow-2xl min-w-44 flex flex-col gap-2 z-50 backdrop-blur-md text-xs"
+                    >
+                      <h4 className="font-bold text-white/50 border-b border-white/10 pb-1.5 mb-1.5 uppercase tracking-wider text-[10px]">
+                        Stream Quality
+                      </h4>
+                      
+                      {[
+                        { id: "auto", label: "Auto (Adaptive)" },
+                        { id: "high", label: "High (1080p)" },
+                        { id: "medium", label: "Medium (720p)" },
+                        { id: "low", label: "Low (480p)" }
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedQuality(item.id as any);
+                            setShowSettingsMenu(false);
+                          }}
+                          className={`flex items-center justify-between text-left px-2 py-1.5 rounded hover:bg-white/10 cursor-pointer font-medium transition-colors ${
+                            selectedQuality === item.id ? "text-[#E50914] bg-white/5" : "text-white"
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          {selectedQuality === item.id && <Check className="w-4 h-4 text-[#E50914]" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Fullscreen */}

@@ -77,7 +77,7 @@ export default function NetflixIntro({ onComplete }: NetflixIntroProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.8, ease: "easeInOut" }}
       onClick={handleComplete}
-      className="fixed inset-0 z-50 bg-[#141414] flex items-center justify-center cursor-pointer select-none overflow-hidden"
+      className="fixed inset-0 z-50 bg-[#000000] flex items-center justify-center cursor-pointer select-none overflow-hidden"
     >
       {/* Intro Video Element */}
       <video

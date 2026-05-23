@@ -29,7 +29,7 @@ export async function sendSubscriptionEmail(
         <style>
           body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background-color: #141414;
+            background-color: #000000;
             color: #ffffff;
             margin: 0;
             padding: 0;
@@ -40,7 +40,7 @@ export async function sendSubscriptionEmail(
             max-width: 600px;
             margin: 0 auto;
             padding: 40px 20px;
-            background-color: #141414;
+            background-color: #000000;
           }
           .header {
             text-align: center;

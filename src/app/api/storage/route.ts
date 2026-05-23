@@ -2,14 +2,23 @@ import { NextResponse } from "next/server";
 import { s3, BUCKET_NAME } from "@/lib/s3";
 import { ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { supabase } from "@/lib/supabase";
+import { verifyAuth } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify that the userId matches the authenticated user
+    if (user?.id !== userId) {
+      return NextResponse.json({ error: "Forbidden: You do not have access to this storage data" }, { status: 403 });
     }
 
     // 1. Query all S3 objects under the user's prefix
@@ -158,12 +167,20 @@ export async function GET(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     const key = searchParams.get("key");
 
     if (!userId || !key) {
       return NextResponse.json({ error: "Missing userId or key" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify that the userId matches the authenticated user
+    if (user?.id !== userId) {
+      return NextResponse.json({ error: "Forbidden: You do not have access to delete this storage object" }, { status: 403 });
     }
 
     // Security check: ensure user only deletes their own files

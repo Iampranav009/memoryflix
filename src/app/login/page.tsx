@@ -96,7 +96,7 @@ export default function LoginPage() {
     <div 
       className="relative min-h-screen w-full flex flex-col justify-between bg-cover bg-center bg-no-repeat font-sans select-none overflow-x-hidden"
       style={{
-        backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.45), rgba(20, 20, 20, 0.95)), url('https://images.unsplash.com/photo-1574375927938-d5a98e8edd85?q=80&w=1920&auto=format&fit=crop')"
+        backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.95)), url('https://images.unsplash.com/photo-1574375927938-d5a98e8edd85?q=80&w=1920&auto=format&fit=crop')"
       }}
     >
       {/* Top Navbar Header */}

@@ -10,7 +10,8 @@ import InfoModal from "@/components/InfoModal";
 import MediaPlayer from "@/components/MediaPlayer";
 import { Play, Info, Plus, Check, Loader2, Sparkles, FolderHeart, AlertTriangle, X } from "lucide-react";
 import axios from "axios";
-import { DbSeason, DbEpisode } from "@/types";
+import { DbSeason, DbEpisode, DbSeries } from "@/types";
+import { safeLocalStorage, safeSessionStorage } from "@/lib/cookies";
 
 export default function BrowsePage() {
   const { 
@@ -43,9 +44,14 @@ export default function BrowsePage() {
   });
 
   const [sharedSeasons, setSharedSeasons] = useState<DbSeason[]>([]);
+  const [seriesList, setSeriesList] = useState<DbSeries[]>([]);
 
   const [isHeroBookmarked, setIsHeroBookmarked] = useState(false);
   const [loadingHeroBookmark, setLoadingHeroBookmark] = useState(false);
+  const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
+
+  const featuredSeasons = data.seasons.filter(s => s.featured);
+  const activeHero = featuredSeasons.length > 0 ? featuredSeasons[currentHeroIndex % featuredSeasons.length] : null;
 
   const fetchDashboardData = async () => {
     if (!activeProfile) return;
@@ -53,14 +59,9 @@ export default function BrowsePage() {
     try {
       const res = await axios.get(`/api/browse?profileId=${activeProfile.id}`);
       setData(res.data);
-
-      // Check if the hero season is bookmarked
-      if (res.data.hero) {
-        const bmRes = await axios.get(
-          `/api/mylist?profileId=${activeProfile.id}&seasonId=${res.data.hero.id}`
-        );
-        setIsHeroBookmarked(bmRes.data.isBookmarked);
-      }
+      
+      const seriesRes = await axios.get(`/api/series?profileId=${activeProfile.id}`);
+      setSeriesList(seriesRes.data || []);
     } catch (err) {
       console.error("Error fetching browse dashboard:", err);
     } finally {
@@ -77,7 +78,7 @@ export default function BrowsePage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
-        const sharedListString = localStorage.getItem("memoryflix_shared_seasons") || "[]";
+        const sharedListString = safeLocalStorage.getItem("memoryflix_shared_seasons") || "[]";
         const sharedList = JSON.parse(sharedListString);
         const mapped = sharedList.map((item: any) => ({
           ...item,
@@ -91,13 +92,46 @@ export default function BrowsePage() {
   }, [activeProfile]);
 
   useEffect(() => {
+    setCurrentHeroIndex(0);
+  }, [activeProfile, data.seasons.length]);
+
+  useEffect(() => {
+    const featuredCount = data.seasons.filter(s => s.featured).length;
+    if (featuredCount <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentHeroIndex((prev) => (prev + 1) % featuredCount);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [data.seasons]);
+
+  useEffect(() => {
+    const checkHeroBookmark = async () => {
+      if (!activeProfile || !activeHero?.id) {
+        setIsHeroBookmarked(false);
+        return;
+      }
+      try {
+        const bmRes = await axios.get(
+          `/api/mylist?profileId=${activeProfile.id}&seasonId=${activeHero.id}`
+        );
+        setIsHeroBookmarked(bmRes.data.isBookmarked);
+      } catch (err) {
+        console.error("Error checking hero bookmark:", err);
+      }
+    };
+    checkHeroBookmark();
+  }, [activeHero?.id, activeProfile]);
+
+  useEffect(() => {
     const checkStorage = async () => {
       if (!dbUser?.id) return;
       
       const currentPlan = (dbUser.planName || "free").toLowerCase();
       if (currentPlan === "elite") return;
 
-      if (sessionStorage.getItem("dismissed_low_storage_warning") === "true") return;
+      if (safeSessionStorage.getItem("dismissed_low_storage_warning") === "true") return;
 
       try {
         const res = await axios.get(`/api/storage?userId=${dbUser.id}`);
@@ -123,7 +157,7 @@ export default function BrowsePage() {
 
   const handleRemindLater = () => {
     setShowLowStorageModal(false);
-    sessionStorage.setItem("dismissed_low_storage_warning", "true");
+    safeSessionStorage.setItem("dismissed_low_storage_warning", "true");
   };
 
   const handleUpgradeNow = () => {
@@ -132,8 +166,8 @@ export default function BrowsePage() {
   };
 
   const handlePlayHero = () => {
-    if (data.hero) {
-      const episodes = data.hero.episodes || [];
+    if (activeHero) {
+      const episodes = activeHero.episodes || [];
       if (episodes.length > 0) {
         setActivePlayback(episodes[0], episodes);
       }
@@ -141,11 +175,11 @@ export default function BrowsePage() {
   };
 
   const handleHeroBookmarkToggle = async () => {
-    if (!activeProfile || !data.hero || loadingHeroBookmark) return;
+    if (!activeProfile || !activeHero || loadingHeroBookmark) return;
     setLoadingHeroBookmark(true);
     try {
       if (isHeroBookmarked) {
-        await axios.delete(`/api/mylist?profileId=${activeProfile.id}&seasonId=${data.hero.id}`);
+        await axios.delete(`/api/mylist?profileId=${activeProfile.id}&seasonId=${activeHero.id}`);
         setIsHeroBookmarked(false);
         // Refresh myList data dynamically
         const bmUpdate = await axios.get(`/api/mylist?profileId=${activeProfile.id}`);
@@ -153,7 +187,7 @@ export default function BrowsePage() {
       } else {
         await axios.post("/api/mylist", {
           profileId: activeProfile.id,
-          seasonId: data.hero.id
+          seasonId: activeHero.id
         });
         setIsHeroBookmarked(true);
         // Refresh myList data dynamically
@@ -209,7 +243,7 @@ export default function BrowsePage() {
 
   if (!activeProfile) {
     return (
-      <div className="min-h-screen bg-[#141414] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="text-center space-y-4">
           <Loader2 className="w-10 h-10 text-[#E50914] animate-spin mx-auto" />
           <p className="text-white/60">Redirecting to profile selection...</p>
@@ -220,14 +254,43 @@ export default function BrowsePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#141414] text-white flex flex-col">
+      <div className="min-h-screen bg-[#000000] text-white flex flex-col font-sans select-none overflow-hidden animate-fade-in">
         <Navbar />
-        <div className="flex-grow flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-12 h-12 text-[#E50914] animate-spin" />
-            <span className="text-sm text-white/50 tracking-wider">Syncing Vault...</span>
+        
+        {/* Shimmer Hero Banner Placeholder */}
+        <div className="w-full h-[65vw] sm:h-[56.25vw] min-h-[400px] md:min-h-[350px] max-h-[85vh] bg-zinc-900/40 relative flex flex-col justify-end p-6 md:p-16 space-y-4">
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
+          <div className="relative space-y-3 max-w-xl">
+            <div className="h-4 w-28 bg-[#E50914]/20 rounded animate-pulse"></div>
+            <div className="h-12 w-[80%] bg-zinc-800 rounded animate-pulse"></div>
+            <div className="h-6 w-[95%] bg-zinc-850 rounded animate-pulse"></div>
+            <div className="h-6 w-[85%] bg-zinc-850 rounded animate-pulse"></div>
+            <div className="flex gap-3 pt-2">
+              <div className="h-10 w-28 bg-zinc-800 rounded animate-pulse"></div>
+              <div className="h-10 w-28 bg-zinc-800 rounded animate-pulse"></div>
+            </div>
           </div>
         </div>
+
+        {/* Shimmer Content Rows */}
+        <main className="p-6 md:p-16 space-y-12 -mt-4 relative z-10">
+          {[1, 2].map((rowIdx) => (
+            <div key={rowIdx} className="space-y-4">
+              <div className="h-6 w-52 bg-zinc-800 rounded animate-pulse"></div>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((cardIdx) => (
+                  <div 
+                    key={cardIdx} 
+                    className="aspect-video bg-zinc-900/60 border border-white/5 rounded-md p-2 flex flex-col justify-end space-y-2 animate-pulse"
+                  >
+                    <div className="h-3 w-[60%] bg-zinc-800 rounded"></div>
+                    <div className="h-2 w-[40%] bg-zinc-850 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </main>
       </div>
     );
   }
@@ -236,7 +299,7 @@ export default function BrowsePage() {
   const isSearchActive = !!searchQuery;
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white pb-24 font-sans select-none overflow-x-hidden">
+    <div className="min-h-screen bg-[#000000] text-white pb-24 font-sans select-none overflow-x-hidden">
       <Navbar />
 
       {/* RENDER DYNAMIC VIEW PANEL */}
@@ -256,7 +319,7 @@ export default function BrowsePage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-16 py-6 overflow-visible">
               {searchResults.map((result, idx) => (
-                <div key={`${result.type}-${result.item.id}-${idx}`} className="relative h-28 overflow-visible flex justify-center">
+                <div key={`${result.type}-${result.item.id}-${idx}`} className={`relative ${result.type === "season" ? "h-32 sm:h-36 md:h-40" : "h-28 sm:h-32 md:h-36"} overflow-visible flex justify-center`}>
                   <MemoryCard item={result.item} type={result.type} />
                 </div>
               ))}
@@ -280,7 +343,7 @@ export default function BrowsePage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-16 py-6 overflow-visible">
               {data.myList.map((season) => (
-                <div key={season.id} className="relative h-28 overflow-visible flex justify-center">
+                <div key={season.id} className="relative h-32 sm:h-36 md:h-40 overflow-visible flex justify-center">
                   <MemoryCard item={season} type="season" />
                 </div>
               ))}
@@ -292,37 +355,31 @@ export default function BrowsePage() {
         <div className="space-y-10 overflow-visible">
           
           {/* A. Hero Banner Section */}
-          {data.hero ? (
+          {activeHero ? (
             <div className="relative w-full h-[65vw] sm:h-[56.25vw] min-h-[400px] md:min-h-[350px] max-h-[85vh] flex items-end select-none font-sans overflow-hidden group">
               {/* Cinematic smooth zoom-in background thumbnail */}
               <div 
                 className="absolute inset-0 bg-cover bg-center transition-transform duration-[4000ms] cubic-bezier(0.25, 1, 0.5, 1) group-hover:scale-108"
                 style={{
-                  backgroundImage: `url(${data.hero.thumbnailUrl || "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=1600"})`
+                  backgroundImage: `url(${activeHero.thumbnailUrl || "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=1600"})`
                 }}
               />
               {/* Linear gradient overlays for premium Netflix look */}
-              <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-black/30 to-transparent z-[1]" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#000000] via-black/30 to-transparent z-[1]" />
               <div className="absolute inset-0 bg-black/15 z-[1]" />
 
               {/* Left Overlay Content */}
               <div className="absolute bottom-10 md:bottom-20 left-6 md:left-16 right-6 md:right-1/3 space-y-4 z-10">
                 
-                {/* Special Tag */}
-                <div className="flex items-center gap-2 bg-white/10 backdrop-blur border border-white/10 px-2.5 py-1 rounded w-fit text-[10px] sm:text-xs font-bold tracking-widest uppercase">
-                  <Sparkles className="w-3.5 h-3.5 text-[#E50914]" />
-                  Featured Collection
-                </div>
-
                 {/* Massive Title */}
                 <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-wide drop-shadow-lg leading-tight uppercase">
-                  {data.hero.title}
+                  {activeHero.title}
                 </h1>
 
                 {/* Description Snippet */}
-                {data.hero.description && (
+                {activeHero.description && (
                   <p className="text-white/80 text-sm sm:text-base md:text-lg leading-relaxed drop-shadow line-clamp-3 md:line-clamp-4">
-                    {data.hero.description}
+                    {activeHero.description}
                   </p>
                 )}
 
@@ -330,7 +387,7 @@ export default function BrowsePage() {
                 <div className="flex flex-wrap items-center gap-3 sm:gap-3.5 pt-2">
                   <button
                     onClick={handlePlayHero}
-                    disabled={!data.hero.episodes || data.hero.episodes.length === 0}
+                    disabled={!activeHero.episodes || activeHero.episodes.length === 0}
                     className="px-5 py-2 sm:px-6 sm:py-2.5 md:px-8 md:py-3.5 rounded font-bold bg-white text-black hover:bg-white/80 disabled:opacity-50 disabled:hover:bg-white transition-colors flex items-center gap-2 md:gap-2.5 shadow-xl cursor-pointer text-sm sm:text-base"
                   >
                     <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
@@ -338,7 +395,7 @@ export default function BrowsePage() {
                   </button>
                   
                   <button
-                    onClick={() => setActiveInfoSeason(data.hero)}
+                    onClick={() => setActiveInfoSeason(activeHero)}
                     className="px-5 py-2 sm:px-6 sm:py-2.5 md:px-8 md:py-3.5 rounded font-bold bg-[#808080]/30 hover:bg-[#808080]/40 text-white backdrop-blur border border-white/5 transition-colors flex items-center gap-2 md:gap-2.5 shadow-xl cursor-pointer text-sm sm:text-base"
                   >
                     <Info className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -362,7 +419,7 @@ export default function BrowsePage() {
             </div>
           ) : (
             // Empty Hero fallback (Initial Setup UI)
-            <div className="h-[40vh] w-full flex flex-col items-center justify-center bg-gradient-to-b from-red-950/20 to-[#141414] border-b border-white/5 pt-24 px-4 text-center">
+            <div className="h-[40vh] w-full flex flex-col items-center justify-center bg-gradient-to-b from-red-950/20 to-[#000000] border-b border-white/5 pt-24 px-4 text-center">
               <h2 className="text-2xl md:text-4xl font-extrabold mb-3">Begin Your Streaming Vault</h2>
               <p className="text-white/60 text-sm md:text-base max-w-lg mb-6">
                 Organize your life memories into Season collections and Episode memories. Click below to create your first collection!
@@ -377,7 +434,7 @@ export default function BrowsePage() {
           )}
 
           {/* B. Horizontal lanes list */}
-          <div className="space-y-12 md:space-y-16 pb-12 overflow-visible relative z-10 select-none">
+          <div className="space-y-6 md:space-y-8 pb-12 overflow-visible relative z-10 select-none">
             
             {/* 1. Continue watching */}
             {data.continueWatching.length > 0 && (
@@ -394,6 +451,15 @@ export default function BrowsePage() {
                 title="Recently Added Memories" 
                 items={data.recentlyAdded} 
                 type="episode" 
+              />
+            )}
+
+            {/* Series Collections */}
+            {seriesList.length > 0 && (
+              <Row 
+                title="Series Collections" 
+                items={seriesList} 
+                type="series" 
               />
             )}
 
@@ -423,7 +489,7 @@ export default function BrowsePage() {
                 type="season" 
               />
             ) : (
-              data.hero && (
+              activeHero && (
                 <div className="px-6 md:px-16 text-white/40 text-sm font-medium py-4 select-none">
                   No other show collections added yet. Tap memories above or click Switch Profile.
                 </div>

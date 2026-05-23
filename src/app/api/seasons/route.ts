@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { supabase, mapSeason } from "@/lib/supabase";
 import { s3, BUCKET_NAME } from "@/lib/s3";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { verifyAuth } from "@/lib/auth";
 
 // GET season details or list seasons
 export async function GET(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     const profileId = searchParams.get("profileId");
@@ -26,10 +30,32 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Season not found" }, { status: 404 });
       }
 
+      // Authorization Check: Verify that this season belongs to a profile owned by the user
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("id", season.profile_id)
+        .maybeSingle();
+
+      if (!profile || profile.user_id !== user?.id) {
+        return NextResponse.json({ error: "Forbidden: You do not own this season" }, { status: 403 });
+      }
+
       return NextResponse.json(mapSeason(season));
     }
 
     if (profileId) {
+      // Authorization Check: Verify that this profile belongs to the user
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("id", profileId)
+        .maybeSingle();
+
+      if (!profile || profile.user_id !== user?.id) {
+        return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
+      }
+
       // List seasons for a profile
       const { data: seasons, error } = await supabase
         .from("seasons")
@@ -54,11 +80,25 @@ export async function GET(request: Request) {
 // POST create a season
 export async function POST(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { profileId, title, description, thumbnailUrl } = body;
 
     if (!profileId || !title) {
       return NextResponse.json({ error: "Missing required fields: profileId and title" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify profile ownership
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("id", profileId)
+      .maybeSingle();
+
+    if (!profile || profile.user_id !== user?.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
     }
 
     // Determine the displayOrder for this season
@@ -99,36 +139,36 @@ export async function POST(request: Request) {
 // PUT update a season
 export async function PUT(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
-    const { id, title, description, thumbnailUrl, featured } = body;
+    const { id, title, description, thumbnailUrl, featured, seriesId } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing season ID" }, { status: 400 });
     }
 
-    // If setting as featured, reset all other seasons for the profile first
-    if (featured === true) {
-      const { data: currentSeason, error: getErr } = await supabase
-        .from("seasons")
-        .select("profile_id")
-        .eq("id", id)
-        .maybeSingle();
+    // Authorization Check: Fetch season first
+    const { data: existingSeason } = await supabase
+      .from("seasons")
+      .select("profile_id")
+      .eq("id", id)
+      .maybeSingle();
 
-      if (getErr) {
-        throw getErr;
-      }
+    if (!existingSeason) {
+      return NextResponse.json({ error: "Season not found" }, { status: 404 });
+    }
 
-      if (currentSeason) {
-        // Reset all seasons under this profile to featured = false
-        const { error: resetErr } = await supabase
-          .from("seasons")
-          .update({ featured: false })
-          .eq("profile_id", currentSeason.profile_id);
+    // Verify profile ownership
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("id", existingSeason.profile_id)
+      .maybeSingle();
 
-        if (resetErr) {
-          throw resetErr;
-        }
-      }
+    if (!profile || profile.user_id !== user?.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this season" }, { status: 403 });
     }
 
     const updateData: any = {};
@@ -136,6 +176,7 @@ export async function PUT(request: Request) {
     if (description !== undefined) updateData.description = description;
     if (thumbnailUrl !== undefined) updateData.thumbnail_url = thumbnailUrl;
     if (featured !== undefined) updateData.featured = featured;
+    if (seriesId !== undefined) updateData.series_id = seriesId;
 
     const { data: updatedSeason, error } = await supabase
       .from("seasons")
@@ -158,6 +199,9 @@ export async function PUT(request: Request) {
 // DELETE a season
 export async function DELETE(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -165,10 +209,10 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Missing season ID" }, { status: 400 });
     }
 
-    // Retrieve season thumbnail and episodes of this season before deletion
+    // Authorization Check: Fetch season first
     const { data: season, error: fetchError } = await supabase
       .from("seasons")
-      .select("thumbnail_url, episodes:episodes(media_url, thumbnail_url)")
+      .select("profile_id, thumbnail_url, episodes:episodes(media_url, thumbnail_url)")
       .eq("id", id)
       .maybeSingle();
 
@@ -178,6 +222,17 @@ export async function DELETE(request: Request) {
 
     if (!season) {
       return NextResponse.json({ error: "Season not found" }, { status: 404 });
+    }
+
+    // Verify profile ownership
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("id", season.profile_id)
+      .maybeSingle();
+
+    if (!profile || profile.user_id !== user?.id) {
+      return NextResponse.json({ error: "Forbidden: You do not own this season" }, { status: 403 });
     }
 
     // Perform database deletion. Delete episodes first to ensure clean manual cascade.
@@ -206,8 +261,33 @@ export async function DELETE(request: Request) {
     }
     if (season.episodes && Array.isArray(season.episodes)) {
       season.episodes.forEach((ep: any) => {
-        if (ep.media_url) urlsToDelete.push(ep.media_url);
         if (ep.thumbnail_url) urlsToDelete.push(ep.thumbnail_url);
+        
+        if (ep.media_url) {
+          const mediaUrlStr = ep.media_url;
+          if (mediaUrlStr.startsWith("[") || mediaUrlStr.startsWith("{")) {
+            try {
+              const parsed = JSON.parse(mediaUrlStr);
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                  if (item.low) urlsToDelete.push(item.low);
+                  if (item.medium) urlsToDelete.push(item.medium);
+                  if (item.high) urlsToDelete.push(item.high);
+                  if (item.url) urlsToDelete.push(item.url);
+                }
+              } else {
+                if (parsed.low) urlsToDelete.push(parsed.low);
+                if (parsed.medium) urlsToDelete.push(parsed.medium);
+                if (parsed.high) urlsToDelete.push(parsed.high);
+                if (parsed.url) urlsToDelete.push(parsed.url);
+              }
+            } catch (e) {
+              urlsToDelete.push(mediaUrlStr);
+            }
+          } else {
+            urlsToDelete.push(mediaUrlStr);
+          }
+        }
       });
     }
 

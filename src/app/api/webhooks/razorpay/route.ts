@@ -31,15 +31,16 @@ export async function POST(request: Request) {
     
     const isProduction = process.env.NODE_ENV === "production";
     const isMock = typeof orderId === "string" && orderId.startsWith("mock_order_");
+    const hasKeys = !!((process.env.RAZORPAY_KEY_ID || "").trim() && (process.env.RAZORPAY_KEY_SECRET || "").trim());
 
-    // Block mock payments in production
-    if (isProduction && isMock) {
-      console.error("Simulated/mock payment payload rejected in production environment!");
+    // Block mock payments in production only if real keys are configured
+    if (isProduction && isMock && hasKeys) {
+      console.error("Simulated/mock payment payload rejected in production environment because real keys are configured!");
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Enforce webhook secret in production
-    if (isProduction && !webhookSecret) {
+    // Enforce webhook secret in production only if real keys are configured
+    if (isProduction && !webhookSecret && hasKeys) {
       console.error("RAZORPAY_WEBHOOK_SECRET is missing in production! Webhook rejected.");
       return NextResponse.json({ error: "Configuration error" }, { status: 500 });
     }

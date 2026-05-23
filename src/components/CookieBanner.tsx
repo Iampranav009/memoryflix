@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useStore } from "@/store/useStore";
-import { getCookie, setCookie, deleteCookie } from "@/lib/cookies";
+import { getCookie, setCookie, deleteCookie, safeLocalStorage } from "@/lib/cookies";
 import { Cookie, X, Shield, Settings, Sliders, Check, HelpCircle } from "lucide-react";
 
 interface CookiePreferences {
@@ -13,6 +13,10 @@ interface CookiePreferences {
 }
 
 export default function CookieBanner() {
+  // Cookie consent banner is disabled — return null globally
+  return null;
+
+  // eslint-disable-next-line no-unreachable
   const { showCookieConsentModal, setShowCookieConsentModal } = useStore();
   const [isVisible, setIsVisible] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
@@ -85,10 +89,10 @@ export default function CookieBanner() {
     if (prefs.functional) {
       // Sync settings and preferences to cookies if allowed
       if (typeof window !== "undefined") {
-        const storedQuality = localStorage.getItem("mf_pref_quality") || "ultra";
-        const storedAudio = localStorage.getItem("mf_pref_audio") || "dolby";
-        const storedAutoplayNext = localStorage.getItem("mf_pref_autoplay_next") || "true";
-        const storedAutoplayPrev = localStorage.getItem("mf_pref_autoplay_prev") || "true";
+        const storedQuality = safeLocalStorage.getItem("mf_pref_quality") || "ultra";
+        const storedAudio = safeLocalStorage.getItem("mf_pref_audio") || "dolby";
+        const storedAutoplayNext = safeLocalStorage.getItem("mf_pref_autoplay_next") || "true";
+        const storedAutoplayPrev = safeLocalStorage.getItem("mf_pref_autoplay_prev") || "true";
 
         setCookie("mf_pref_quality", storedQuality, 365);
         setCookie("mf_pref_audio", storedAudio, 365);
@@ -109,7 +113,7 @@ export default function CookieBanner() {
     } else {
       // Make sure active profile is written to cookie
       if (typeof window !== "undefined") {
-        const activeProfileId = localStorage.getItem("memoryflix_active_profile_id");
+        const activeProfileId = safeLocalStorage.getItem("memoryflix_active_profile_id");
         if (activeProfileId) {
           setCookie("memoryflix_active_profile_id", activeProfileId, 365);
         }

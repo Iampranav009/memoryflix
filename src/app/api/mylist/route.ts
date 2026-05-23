@@ -1,15 +1,36 @@
 import { NextResponse } from "next/server";
 import { supabase, mapSeason } from "@/lib/supabase";
+import { verifyAuth } from "@/lib/auth";
+
+// Helper: Verify that a profile belongs to the user
+async function verifyProfileOwner(profileId: string, userId: string): Promise<boolean> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  return profile?.user_id === userId;
+}
 
 // GET bookmark list items or check status
 export async function GET(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const profileId = searchParams.get("profileId");
     const seasonId = searchParams.get("seasonId");
 
     if (!profileId) {
       return NextResponse.json({ error: "Missing profileId" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify profile ownership
+    const isOwner = await verifyProfileOwner(profileId, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
     }
 
     if (seasonId) {
@@ -59,11 +80,20 @@ export async function GET(request: Request) {
 // POST add a bookmark
 export async function POST(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { profileId, seasonId } = body;
 
     if (!profileId || !seasonId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify profile ownership
+    const isOwner = await verifyProfileOwner(profileId, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
     }
 
     const { data: bookmark, error } = await supabase
@@ -89,12 +119,21 @@ export async function POST(request: Request) {
 // DELETE remove a bookmark
 export async function DELETE(request: Request) {
   try {
+    const { user, errorResponse } = await verifyAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const profileId = searchParams.get("profileId");
     const seasonId = searchParams.get("seasonId");
 
     if (!profileId || !seasonId) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
+    }
+
+    // Authorization Check: Verify profile ownership
+    const isOwner = await verifyProfileOwner(profileId, user?.id || "");
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden: You do not own this profile" }, { status: 403 });
     }
 
     const { error } = await supabase
