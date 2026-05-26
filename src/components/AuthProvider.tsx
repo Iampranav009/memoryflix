@@ -14,10 +14,15 @@ if (typeof window !== "undefined" && !isInterceptorRegistered) {
   axios.interceptors.request.use(
     async (config) => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          config.headers = config.headers || {};
-          config.headers.Authorization = `Bearer ${session.access_token}`;
+        const isS3Request = config.url?.includes("amazonaws.com");
+        const isAbsoluteUrl = config.url?.startsWith("http://") || config.url?.startsWith("https://");
+        
+        if (!isS3Request && (!isAbsoluteUrl || (typeof window !== "undefined" && config.url?.startsWith(window.location.origin)))) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            config.headers = config.headers || {};
+            config.headers.Authorization = `Bearer ${session.access_token}`;
+          }
         }
       } catch (err) {
         console.error("Axios interceptor error getting session:", err);
@@ -31,7 +36,7 @@ if (typeof window !== "undefined" && !isInterceptorRegistered) {
 }
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { setDbUser, setActiveProfile, setIsLoading, isLoading } = useStore();
+  const { dbUser, setDbUser, activeProfile, setActiveProfile, setIsLoading, isLoading } = useStore();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -39,60 +44,61 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // Listen for auth state changes in Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
-        if (session?.user) {
-          const supabaseUser = session.user;
+          if (session?.user) {
+            const supabaseUser = session.user;
           
-          // Clean hash from browser address bar if it contains OAuth tokens
-          if (typeof window !== "undefined" && (window.location.hash.includes("access_token") || window.location.hash.includes("id_token") || window.location.hash.includes("refresh_token"))) {
-            window.history.replaceState(null, "", window.location.pathname + window.location.search);
-          }
+            // Clean hash from browser address bar if it contains OAuth tokens (synchronous, no await)
+            if (typeof window !== "undefined" && (window.location.hash.includes("access_token") || window.location.hash.includes("id_token") || window.location.hash.includes("refresh_token"))) {
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            }
           
-          // Sync user to Supabase DB via Prisma API
-          const response = await axios.post("/api/auth/sync", {
-            firebaseUid: supabaseUser.id, // Using 'firebaseUid' DB field to store Supabase Auth user ID
-            email: supabaseUser.email || "",
-            name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || null,
-            photoUrl: supabaseUser.user_metadata?.avatar_url || null,
-          });
+            // Sync user to DB and fetch profiles in the most parallel way possible:
+            // sync must complete first to get the user ID, then immediately fetch profiles
+            const response = await axios.post("/api/auth/sync", {
+              firebaseUid: supabaseUser.id,
+              email: supabaseUser.email || "",
+              name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || null,
+              photoUrl: supabaseUser.user_metadata?.avatar_url || null,
+            });
           
-          const syncedUser = response.data;
-          setDbUser(syncedUser);
+            const syncedUser = response.data;
+            setDbUser(syncedUser);
 
-          // Get profiles for user to restore active profile if stored
-          const profilesResponse = await axios.get(`/api/profiles?userId=${syncedUser.id}`);
-          const profiles = profilesResponse.data;
+            // Fetch profiles immediately after sync (not after any other work)
+            const profilesResponse = await axios.get(`/api/profiles?userId=${syncedUser.id}`);
+            const profiles = profilesResponse.data;
 
-          const storedProfileId = getCookie("memoryflix_active_profile_id") || safeLocalStorage.getItem("memoryflix_active_profile_id");
-          if (storedProfileId) {
-            const matchedProfile = profiles.find((p: any) => p.id === storedProfileId);
-            if (matchedProfile) {
-              setActiveProfile(matchedProfile);
+            const storedProfileId = getCookie("memoryflix_active_profile_id") || safeLocalStorage.getItem("memoryflix_active_profile_id");
+            if (storedProfileId) {
+              const matchedProfile = profiles.find((p: any) => p.id === storedProfileId);
+              if (matchedProfile) {
+                setActiveProfile(matchedProfile);
+              } else {
+                setActiveProfile(null);
+              }
             } else {
               setActiveProfile(null);
             }
-          } else {
-            setActiveProfile(null);
-          }
 
-          // If logged in and on the login/landing page, redirect based on profile choice
-          if (pathname === "/login" || pathname === "/") {
-            const searchParams = new URLSearchParams(window.location.search);
-            const redirectParam = searchParams.get("redirect");
-            const planParam = searchParams.get("plan");
-            const showPricing = searchParams.get("showpricing") === "true" || (typeof window !== "undefined" && window.location.hash === "#pricing");
+            // If logged in and on the login/landing page, redirect based on profile choice
+            if (pathname === "/login" || pathname === "/") {
+              const searchParams = new URLSearchParams(window.location.search);
+              const redirectParam = searchParams.get("redirect");
+              const planParam = searchParams.get("plan");
+              const showPricing = searchParams.get("showpricing") === "true" || (typeof window !== "undefined" && window.location.hash === "#pricing");
 
-            if (redirectParam === "checkout" && planParam) {
-              router.push(`/?redirect=checkout&plan=${planParam}`);
-            } else if (showPricing) {
-              // Allow logged-in user to stay on landing page to view/change pricing plans
-            } else {
-              if (storedProfileId && profiles.some((p: any) => p.id === storedProfileId)) {
-                router.push("/browse");
+              if (redirectParam === "checkout" && planParam) {
+                router.push(`/?redirect=checkout&plan=${planParam}`);
+              } else if (showPricing) {
+                // Allow logged-in user to stay on landing page to view/change pricing plans
               } else {
-                router.push("/profiles");
+                if (storedProfileId && profiles.some((p: any) => p.id === storedProfileId)) {
+                  router.push("/browse");
+                } else {
+                  router.push("/profiles");
+                }
               }
             }
-          }
         } else {
           setDbUser(null);
           setActiveProfile(null);
@@ -114,9 +120,33 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     };
   }, [setDbUser, setActiveProfile, setIsLoading, pathname, router]);
 
+  useEffect(() => {
+    // If auth loading is finished and user is logged in, check profile selection status
+    if (!isLoading && dbUser) {
+      const isPublicPage = pathname === "/login" || pathname === "/" || pathname?.startsWith("/season/share");
+      // If the route is protected (non-public), and we're not already on the profiles page,
+      // and they haven't selected an active profile, redirect them to the profiles selection screen
+      if (!isPublicPage && pathname !== "/profiles" && !activeProfile) {
+        router.push("/profiles");
+      }
+    }
+  }, [isLoading, dbUser, activeProfile, pathname, router]);
+
   const isPublicPage = pathname === "/login" || pathname === "/" || pathname?.startsWith("/season/share");
 
-  if (isLoading && !isPublicPage) {
+  // Pages that manage their own loading/skeleton UI — don't double-show the auth skeleton for them
+  const pagesWithOwnSkeleton = [
+    "/browse",
+    "/profiles",
+    "/settings",
+    "/memories",
+    "/series",
+    "/season",
+    "/video",
+  ];
+  const pageHasOwnSkeleton = pagesWithOwnSkeleton.some((p) => pathname?.startsWith(p));
+
+  if (isLoading && !isPublicPage && !pageHasOwnSkeleton) {
     return (
       <div className="min-h-screen bg-[#000000] text-white flex flex-col font-sans select-none overflow-hidden">
         {/* Shimmer Header */}

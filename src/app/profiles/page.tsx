@@ -149,6 +149,38 @@ export default function ProfilesPage() {
     if (!e.target.files || e.target.files.length === 0 || !dbUser) return;
     const file = e.target.files[0];
     
+    // Client-side validation: File type check
+    if (!file.type.startsWith("image/")) {
+      setErrorDetails({
+        title: "Invalid File Type",
+        message: "The selected file is not a valid image.",
+        troubleshooting: [
+          "Please choose a valid image file (PNG, JPEG, WEBP, or GIF).",
+          "Ensure the file is not corrupted or renamed with a false extension."
+        ]
+      });
+      // Reset input
+      e.target.value = '';
+      return;
+    }
+
+    // Client-side validation: File size check (5 MB limit)
+    const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_AVATAR_SIZE) {
+      setErrorDetails({
+        title: "Image File Too Large",
+        message: `The selected image is ${(file.size / (1024 * 1024)).toFixed(2)} MB, which exceeds our 5 MB profile avatar limit.`,
+        troubleshooting: [
+          "Please compress the image before uploading to reduce its size.",
+          "Select a smaller image file.",
+          "Resize the image to a standard profile resolution (e.g., 512x512 pixels)."
+        ]
+      });
+      // Reset input
+      e.target.value = '';
+      return;
+    }
+
     setIsUploadingAvatar(true);
     try {
       const presignResponse = await axios.post("/api/s3/presign", {
@@ -516,8 +548,6 @@ export default function ProfilesPage() {
       {errorDetails && (
         <div className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
           <div className="w-full max-w-[550px] bg-[#181818] border border-red-600/30 rounded-lg p-6 md:p-8 relative shadow-2xl animate-zoom-in">
-            {/* Red accent line top */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-netflix-red rounded-t-lg"></div>
 
             {/* Header */}
             <div className="flex items-start gap-4 mb-4 mt-2">

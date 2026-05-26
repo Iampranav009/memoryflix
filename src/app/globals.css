@@ -6,8 +6,8 @@
   --font-sans: "Plus Jakarta Sans", "Montserrat", "Inter", system-ui, -apple-system, sans-serif;
   --font-logo: "Bebas Neue", sans-serif;
   
-  --color-netflix-red: #E50914;
-  --color-netflix-red-hover: #C11119;
+  --color-netflix-red: #b81d24;
+  --color-netflix-red-hover: #8f1318;
   --color-netflix-black: #000000;
   --color-netflix-dark: #181818;
   --color-netflix-gray: #808080;
@@ -43,7 +43,7 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
-  --netflix-red: #E50914;
+  --netflix-red: #b81d24;
   --netflix-card-bg: #181818;
   --netflix-gray: #808080;
   --netflix-light-gray: #E5E5E5;

@@ -5,15 +5,17 @@ import { useRouter } from "next/navigation";
 import { 
   Sparkles, Play, Shield, Film, Heart, X, 
   Volume2, VolumeX, ChevronDown, ChevronUp, Check, 
-  Plus, Tv, Info, ArrowUpRight, Lock, 
+  Plus, Tv, Info, ArrowUpRight, Lock, Unlock,
   Laptop, Smartphone, Database, Users, HelpCircle, 
-  ChevronRight, Calendar, Clock, AlertCircle, PlayCircle
+  ChevronRight, Calendar, Clock, AlertCircle, PlayCircle,
+  Upload, Activity, Zap, RefreshCw, Server, ShieldCheck, Key
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useStore } from "@/store/useStore";
 import axios from "axios";
 
-// Realistic Netflix-style Mock Memory Shows for the Interactive Showcase
-const MOCK_SHOWS = [
+// Upgraded Mock Memory Database with Categories & Privacy Constraints
+const INITIAL_MOCK_SHOWS = [
   {
     id: "summer-2025",
     title: "Summer Vacation 2025",
@@ -26,6 +28,8 @@ const MOCK_SHOWS = [
     matchScore: "99% Match",
     seasonsCount: 1,
     genres: ["Adventure", "Family Roadtrip", "Nature"],
+    kidsAllowed: true,
+    privateLocked: false,
     episodes: [
       {
         id: "sv-e1",
@@ -48,39 +52,6 @@ const MOCK_SHOWS = [
     ]
   },
   {
-    id: "wedding-day",
-    title: "The Wedding Vows",
-    tagline: "A Love Story in 4K",
-    description: "Two families become one on a perfect spring afternoon. Experience the behind-the-scenes nervous laughter, the tearful promises under the giant oak, and the legendary dance floor battles that followed.",
-    coverUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=600&auto=format&fit=crop",
-    backdropUrl: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1200&auto=format&fit=crop",
-    year: "2024",
-    rating: "PG",
-    matchScore: "98% Match",
-    seasonsCount: 2,
-    genres: ["Romance", "Celebration", "Emotional"],
-    episodes: [
-      {
-        id: "wd-e1",
-        title: "S1:E1 — Hairspray & Tight Bowties",
-        duration: "6:10",
-        summary: "Capturing the raw tension and sweet anticipation of the morning preparations. Ties get straightened, champagne is toasted, and hands shake."
-      },
-      {
-        id: "wd-e2",
-        title: "S1:E2 — Vows Under the Sacred Oak",
-        duration: "14:30",
-        summary: "The main ceremony. Highlighting the walk down the aisle, the heartfelt hand-written vows, and the grand kiss that seals the union."
-      },
-      {
-        id: "wd-e3",
-        title: "S2:E1 — The Grand Waltz & Cake Chaos",
-        duration: "11:05",
-        summary: "Stepping onto the dance floor as newlyweds. From a romantic first dance to the chaotic cake-cutting and high-energy group dances."
-      }
-    ]
-  },
-  {
     id: "baby-leo",
     title: "Leo's First Steps",
     tagline: "Discovering the World, Inch by Inch",
@@ -92,6 +63,8 @@ const MOCK_SHOWS = [
     matchScore: "95% Match",
     seasonsCount: 1,
     genres: ["Baby Milestones", "Contagious Laughter", "Messy Eats"],
+    kidsAllowed: true,
+    privateLocked: false,
     episodes: [
       {
         id: "bl-e1",
@@ -125,6 +98,8 @@ const MOCK_SHOWS = [
     matchScore: "97% Match",
     seasonsCount: 1,
     genres: ["Skiing", "Cozy Winter", "Snow fun"],
+    kidsAllowed: true,
+    privateLocked: false,
     episodes: [
       {
         id: "ww-e1",
@@ -137,12 +112,6 @@ const MOCK_SHOWS = [
         title: "S1:E2 — Boardgames & Crackling Logs",
         duration: "7:12",
         summary: "Defrosting frozen noses. An intense game of Monopoly by the massive stone hearth while snow falls heavy outside the window."
-      },
-      {
-        id: "ww-e3",
-        title: "S1:E3 — Midnight Sledding Championship",
-        duration: "8:50",
-        summary: "A chaotic, hilarious sled race down the resort's bunny hill under the moonlit glow, featuring spectacular pile-ups and snow angels."
       }
     ]
   }
@@ -151,9 +120,15 @@ const MOCK_SHOWS = [
 export default function RootLandingPage() {
   const router = useRouter();
 
-  // State hooks for interactivity
+  // Core App states
+  const { dbUser, setDbUser, setShowCookieConsentModal } = useStore();
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const autoCheckoutTriggered = useRef(false);
+
+  // Landing page interaction states
   const [showTrailer, setShowTrailer] = useState(false);
-  const [activeShow, setActiveShow] = useState<typeof MOCK_SHOWS[0] | null>(null);
+  const [activeShow, setActiveShow] = useState<typeof INITIAL_MOCK_SHOWS[0] | null>(null);
   const [playingEpisode, setPlayingEpisode] = useState<any | null>(null);
   
   // Simulated playback state
@@ -174,11 +149,26 @@ export default function RootLandingPage() {
   // Video trailer element reference
   const trailerVideoRef = useRef<HTMLVideoElement>(null);
 
-  const { dbUser, setDbUser, setShowCookieConsentModal } = useStore();
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const autoCheckoutTriggered = useRef(false);
+  // Profile selection sandbox states
+  const [activeDemoProfile, setActiveDemoProfile] = useState<"family" | "kids" | "private" | null>(null);
+  const [showPinScreen, setShowPinScreen] = useState(false);
+  const [enteredPin, setEnteredPin] = useState<string>("");
+  const [pinError, setPinError] = useState(false);
+  const [shakePin, setShakePin] = useState(false);
 
+  // S3 upload simulator states
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadFile, setUploadFile] = useState("grandma_birthday_8k.mp4");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLogs, setUploadLogs] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadComplete, setUploadComplete] = useState(false);
+
+  // Mock Database active state (allows users to append items temporarily!)
+  const [mockShows, setMockShows] = useState(INITIAL_MOCK_SHOWS);
+
+  // Plan specs table details
   const PLAN_RANKS: Record<string, number> = {
     free: 0,
     starter: 1,
@@ -215,7 +205,7 @@ export default function RootLandingPage() {
       return {
         disabled: true,
         text: "Downgrade Unavailable",
-        classes: "bg-zinc-800/50 border border-zinc-700/20 text-zinc-500 cursor-not-allowed opacity-50"
+        classes: "bg-[#252525] border border-zinc-700/20 text-zinc-500 cursor-not-allowed opacity-50"
       };
     }
 
@@ -266,7 +256,7 @@ export default function RootLandingPage() {
       if (!dbUser) {
         router.push("/login");
       } else {
-        alert("You are automatically enrolled in the Free Tier on registration.");
+        alert("You are enrolled in the Free Tier on registration.");
       }
       return;
     }
@@ -417,6 +407,172 @@ export default function RootLandingPage() {
     }
   };
 
+  // Handle Profile PIN pad input
+  const handlePinInput = (num: string) => {
+    if (enteredPin.length >= 4) return;
+    const nextPin = enteredPin + num;
+    setEnteredPin(nextPin);
+
+    if (nextPin.length === 4) {
+      if (nextPin === "1234") {
+        setTimeout(() => {
+          setActiveDemoProfile("private");
+          setShowPinScreen(false);
+          setEnteredPin("");
+        }, 300);
+      } else {
+        setTimeout(() => {
+          setShakePin(true);
+          setPinError(true);
+          setTimeout(() => {
+            setShakePin(false);
+            setEnteredPin("");
+          }, 800);
+        }, 200);
+      }
+    }
+  };
+
+  // Clear last PIN digit
+  const clearLastPinDigit = () => {
+    setEnteredPin(prev => prev.slice(0, -1));
+    setPinError(false);
+  };
+
+  // AWS S3 Direct Upload Simulator logic
+  const handleUploadSubmit = () => {
+    if (!uploadTitle.trim()) {
+      alert("Please enter a title for your memory episode.");
+      return;
+    }
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadLogs([]);
+    setUploadComplete(false);
+
+    // Logging flow simulating secure direct signature pipeline
+    const logs = [
+      "🔄 Establishing secure private connection to your memory vault...",
+      "🔑 Verifying profile permissions and security key...",
+      `📦 Preparing your personal media vault partition...`,
+      "⚡ Securing the end-to-end encrypted upload tunnel...",
+      "🚀 Transferring high-definition video chunks..."
+    ];
+
+    let currentLogIndex = 0;
+    const logInterval = setInterval(() => {
+      if (currentLogIndex < logs.length) {
+        setUploadLogs(prev => [...prev, logs[currentLogIndex]]);
+        currentLogIndex++;
+      } else {
+        clearInterval(logInterval);
+      }
+    }, 450);
+
+    // Progress bar simulation
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+      progress += Math.floor(Math.random() * 15) + 5;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(progressInterval);
+        
+        // Finalize database synchronization
+        setUploadLogs(prev => [
+          ...prev, 
+          "✅ Video chunks uploaded securely to your private vault!",
+          "⚙️ Adding new episode to your custom library catalog...",
+          "🔒 Private memory securely linked and ready to stream!"
+        ]);
+
+        setTimeout(() => {
+          // Push new episode or new private collection into mock database
+          setMockShows(prevShows => {
+            const isPrivate = activeDemoProfile === "private";
+            if (isPrivate) {
+              const newPrivateShow = {
+                id: `custom-private-${Date.now()}`,
+                title: uploadTitle.trim(),
+                tagline: "Securely Locked Custom Chronicle",
+                description: `A custom private memory cataloged with absolute encryption. Original filename: "${uploadFile}".`,
+                coverUrl: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=600&auto=format&fit=crop",
+                backdropUrl: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=1200&auto=format&fit=crop",
+                year: new Date().getFullYear().toString(),
+                rating: "Restricted",
+                matchScore: "99% Match",
+                seasonsCount: 1,
+                genres: ["Secure Locker", "Private Moment"],
+                kidsAllowed: false,
+                privateLocked: true,
+                isCustomPrivate: true,
+                episodes: [
+                  {
+                    id: `custom-private-ep-${Date.now()}`,
+                    title: `S1:E1 — ${uploadTitle.trim()}`,
+                    duration: "4:32",
+                    summary: `Direct high-definition private stream segment from: "${uploadFile}".`
+                  }
+                ]
+              };
+              return [...prevShows, newPrivateShow];
+            } else {
+              return prevShows.map(show => {
+                // Append to summer vacation category if family selected
+                if (show.id === "summer-2025") {
+                  const newEp = {
+                    id: `custom-ep-${Date.now()}`,
+                    title: `S1:E${show.episodes.length + 1} — ${uploadTitle.trim()}`,
+                    duration: "6:14",
+                    summary: `High-definition video segment from file: "${uploadFile}". Uploaded to your private memory library with absolute privacy and secure streaming.`
+                  };
+                  
+                  // If activeShow is this show, update activeShow state to reflect immediately
+                  const updatedShow = { ...show, episodes: [...show.episodes, newEp] };
+                  if (activeShow?.id === show.id) {
+                    setActiveShow(updatedShow);
+                  }
+                  return updatedShow;
+                }
+                return show;
+              });
+            }
+          });
+
+          setUploadComplete(true);
+          setUploading(false);
+          setUploadTitle("");
+          
+          // Auto close modal after 1.5s
+          setTimeout(() => {
+            setShowUploadModal(false);
+            setUploadComplete(false);
+            setUploadLogs([]);
+          }, 1500);
+
+        }, 800);
+      }
+      setUploadProgress(progress);
+    }, 280);
+  };
+
+  // Filter shows based on active Demo profile
+  const hasCustomPrivate = mockShows.some(show => (show as any).isCustomPrivate);
+
+  const filteredDemoShows = mockShows.filter(show => {
+    if (activeDemoProfile === "kids") {
+      return show.kidsAllowed;
+    }
+    if (activeDemoProfile === "family") {
+      return !show.privateLocked;
+    }
+    if (activeDemoProfile === "private") {
+      // In private mode, only display custom private memories.
+      // If there are none created yet, display nothing (empty state).
+      return (show as any).isCustomPrivate;
+    }
+    return true;
+  });
+
   return (
     <div className="relative min-h-screen w-full bg-[#000000] text-white font-sans selection:bg-netflix-red selection:text-white overflow-x-hidden">
       
@@ -424,7 +580,7 @@ export default function RootLandingPage() {
       <section 
         className="relative min-h-screen w-full flex flex-col justify-between bg-cover bg-center bg-no-repeat z-20"
         style={{
-          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 1)), url('https://images.unsplash.com/photo-1574375927938-d5a98e8edd85?q=80&w=1920&auto=format&fit=crop')"
+          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 1)), url('https://images.unsplash.com/photo-1574375927938-d5a98e8edd85?q=80&w=1920&auto=format&fit=crop')"
         }}
       >
         {/* Navigation Navbar */}
@@ -468,27 +624,47 @@ export default function RootLandingPage() {
 
         {/* Hero Callout Container */}
         <div className="flex-grow flex items-center justify-center px-6 py-16 text-center z-10 max-w-5xl mx-auto">
-          <div className="space-y-8 animate-fade-in">
+          <div className="space-y-8">
             
             {/* Pulsing Badge */}
-            <div className="inline-flex items-center justify-center gap-2.5 text-netflix-red text-xs sm:text-sm font-extrabold uppercase tracking-[0.25em] bg-black/75 border border-white/10 px-6 py-2.5 rounded-full shadow-2xl backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="inline-flex items-center justify-center gap-2.5 text-netflix-red text-xs sm:text-sm font-extrabold uppercase tracking-[0.25em] bg-black/75 border border-white/10 px-6 py-2.5 rounded-full shadow-2xl backdrop-blur-md"
+            >
               <Sparkles className="w-4 h-4 text-netflix-red animate-pulse" />
               Your Private Family Streaming Network
-            </div>
+            </motion.div>
 
             {/* Main Header */}
-            <h1 className="text-4xl sm:text-6xl md:text-8xl font-black leading-[1.05] tracking-wide netflix-text-shadow">
+            <motion.h1 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="text-4xl sm:text-6xl md:text-8xl font-black leading-[1.05] tracking-wide netflix-text-shadow"
+            >
               Unlimited memories, <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-netflix-red">streamed forever.</span>
-            </h1>
+            </motion.h1>
 
             {/* Sub-description */}
-            <p className="text-white/80 text-lg sm:text-2xl font-normal max-w-3xl mx-auto leading-relaxed netflix-text-shadow">
+            <motion.p 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.4 }}
+              className="text-white/80 text-lg sm:text-2xl font-normal max-w-3xl mx-auto leading-relaxed netflix-text-shadow"
+            >
               Stop hiding your life's greatest moments in random cloud folders. Organize your photos and videos into a gorgeous, private streaming interface complete with <span className="text-white font-semibold underline decoration-netflix-red decoration-2">Shows, Seasons, and Episodes</span>.
-            </p>
+            </motion.p>
 
             {/* Visual CTA Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4"
+            >
               <button
                 onClick={() => router.push("/login")}
                 className="w-full sm:w-auto px-8 py-4.5 bg-netflix-red hover:bg-netflix-red-hover hover:scale-105 active:scale-95 text-white font-extrabold rounded shadow-[0_6px_25px_rgba(229,9,20,0.5)] transition-all flex items-center justify-center gap-3.5 uppercase text-sm tracking-[0.12em] cursor-pointer"
@@ -504,11 +680,11 @@ export default function RootLandingPage() {
                 <Film className="w-5 h-5 text-netflix-red" />
                 Watch Cinematic Trailer
               </button>
-            </div>
+            </motion.div>
 
             {/* Prompt */}
             <p className="text-white/40 text-xs sm:text-sm font-medium tracking-wide">
-              No credit card required. Encrypted storage vaults and family-scoped visibility.
+              Secure Cloud storage. Customized password pin profiles for relatives.
             </p>
           </div>
         </div>
@@ -519,45 +695,57 @@ export default function RootLandingPage() {
 
 
       {/* 2. REAL TRAILER POPUP MODAL */}
-      {showTrailer && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 sm:p-8 animate-fade-in backdrop-blur-sm">
-          <div className="relative w-full max-w-4xl bg-black border border-white/15 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(229,9,20,0.4)]">
-            
-            {/* Header controls */}
-            <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
-              <button 
-                onClick={toggleTrailerMute}
-                className="p-3 bg-black/75 hover:bg-black text-white rounded-full border border-white/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                title="Toggle Mute"
-              >
-                {trailerVideoRef.current?.muted ? <VolumeX className="w-5 h-5 text-netflix-red" /> : <Volume2 className="w-5 h-5" />}
-              </button>
-              <button 
-                onClick={() => setShowTrailer(false)}
-                className="p-3 bg-black/75 hover:bg-black text-white rounded-full border border-white/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                title="Close Trailer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Video Player */}
-            <div className="aspect-video w-full bg-black relative">
-              <video 
-                ref={trailerVideoRef}
-                src="/netflix _intro_1080p.mp4" 
-                autoPlay 
-                playsInline
-                className="w-full h-full object-contain"
-                onEnded={() => setShowTrailer(false)}
-              />
-              <div className="absolute bottom-6 left-6 pointer-events-none bg-black/60 border border-white/10 px-4 py-2 rounded-md">
-                <p className="text-netflix-red font-black tracking-widest text-xs uppercase animate-pulse">MemoryFlix Cinematic Intro</p>
+      <AnimatePresence>
+        {showTrailer && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 sm:p-8 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 30 }}
+              className="relative w-full max-w-4xl bg-black border border-white/15 rounded-xl overflow-hidden shadow-[0_0_50px_rgba(229,9,20,0.4)]"
+            >
+              
+              {/* Header controls */}
+              <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                <button 
+                  onClick={toggleTrailerMute}
+                  className="p-3 bg-black/75 hover:bg-black text-white rounded-full border border-white/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Toggle Mute"
+                >
+                  {trailerVideoRef.current?.muted ? <VolumeX className="w-5 h-5 text-netflix-red" /> : <Volume2 className="w-5 h-5" />}
+                </button>
+                <button 
+                  onClick={() => setShowTrailer(false)}
+                  className="p-3 bg-black/75 hover:bg-black text-white rounded-full border border-white/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  title="Close Trailer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+
+              {/* Video Player */}
+              <div className="aspect-video w-full bg-black relative">
+                <video 
+                  ref={trailerVideoRef}
+                  src="/netflix _intro_1080p.mp4" 
+                  autoPlay 
+                  playsInline
+                  className="w-full h-full object-contain"
+                  onEnded={() => setShowTrailer(false)}
+                />
+                <div className="absolute bottom-6 left-6 pointer-events-none bg-black/60 border border-white/10 px-4 py-2 rounded-md">
+                  <p className="text-netflix-red font-black tracking-widest text-xs uppercase animate-pulse">MemoryFlix Cinematic Intro</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
 
       {/* 3. INTERACTIVE MOCKUP SHOWCASE (LIVE DEMO) */}
@@ -569,395 +757,756 @@ export default function RootLandingPage() {
               Experience the <span className="text-netflix-red">Interactive Sandbox</span>
             </h2>
             <p className="text-white/60 text-base md:text-lg max-w-2xl mx-auto font-medium">
-              Go ahead! Hover, click, browse, and play. Test out this fully interactive live simulation of the MemoryFlix interface right now.
+              Hover, click, browse, and upload. Test out a fully interactive live simulation of the MemoryFlix multi-profile library and upload experience right now.
             </p>
           </div>
 
-          {/* Interactive Interface Frame */}
-          <div className="bg-[#181818] border border-white/10 rounded-2xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] space-y-8 relative overflow-hidden">
+          {/* Sandbox Wrapper Frame */}
+          <div className="bg-[#141414] border border-white/10 rounded-2xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative overflow-hidden">
             
             {/* Glow accent */}
             <div className="absolute top-0 right-0 w-[400px] h-[200px] bg-netflix-red/10 rounded-full blur-[120px] pointer-events-none"></div>
             
             {/* Header bar of our Sandbox */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-4 select-none">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4 select-none mb-6">
               <div className="flex items-center gap-6">
                 <span className="text-white font-extrabold text-lg tracking-widest font-logo flex items-center gap-1.5 text-netflix-red select-none">
-                  <PlayCircle className="w-5 h-5" /> MEMORYFLIX DEMO
+                  <PlayCircle className="w-5 h-5" /> MEMORYFLIX PREVIEW
                 </span>
                 <span className="hidden sm:inline text-xs text-white/40 bg-white/5 border border-white/10 px-2.5 py-1 rounded">
                   Status: Simulated Sandbox Active
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
-                <span className="text-[11px] font-bold text-white/50 tracking-wider uppercase">Live Preview</span>
+              <div className="flex items-center gap-4">
+                {activeDemoProfile && (
+                  <button
+                    onClick={() => {
+                      setActiveDemoProfile(null);
+                      setShowPinScreen(false);
+                    }}
+                    className="text-xs text-white/60 hover:text-white border border-white/20 hover:bg-white/5 px-3 py-1.5 rounded transition-all flex items-center gap-1.5 cursor-pointer font-semibold"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Switch Profile
+                  </button>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                  <span className="text-[11px] font-bold text-white/50 tracking-wider uppercase">Live Preview</span>
+                </div>
               </div>
             </div>
 
-            {/* Showcase title banner */}
-            <div className="space-y-2">
-              <h3 className="text-xl md:text-2xl font-bold flex items-center gap-2.5">
-                <Tv className="w-5 h-5 text-netflix-red" />
-                Featured Series Categories
-              </h3>
-              <p className="text-xs text-white/45">Click any card below to open its Netflix-style catalog details, inspect its episodes, and play.</p>
-            </div>
-
-            {/* Netflix sliding grid row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-2">
-              {MOCK_SHOWS.map((show) => (
-                <div 
-                  key={show.id}
-                  onClick={() => {
-                    setActiveShow(show);
-                    setPlayingEpisode(null); // Clear active playing states
-                  }}
-                  className="group relative bg-[#202020] rounded-xl overflow-hidden cursor-pointer border border-white/5 hover:border-netflix-red/40 transition-all duration-300 transform hover:-translate-y-2 shadow-lg hover:shadow-[0_12px_25px_rgba(0,0,0,0.7)]"
+            {/* A. STAGE 1: WHO'S WATCHING PROFILE SELECTOR */}
+            <AnimatePresence mode="wait">
+              {!activeDemoProfile && !showPinScreen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  className="py-12 flex flex-col items-center justify-center text-center space-y-8"
                 >
-                  {/* Poster Image */}
-                  <div className="aspect-[16/9] w-full overflow-hidden bg-[#2a2a2a] relative">
-                    <img 
-                      src={show.coverUrl} 
-                      alt={show.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent"></div>
+                  <h3 className="text-2xl sm:text-4xl font-extrabold tracking-wide text-white">Who's watching?</h3>
+                  
+                  <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-12">
                     
-                    {/* Dynamic Top-Left Pill Tag */}
-                    <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-sm font-black text-[8px] sm:text-[9px] uppercase tracking-wider shadow-md bg-[#E50914] text-white border border-white/10 select-none">
-                      {show.id === "summer-2025" ? "Recently Added" : show.id === "wedding-day" ? "Loved" : show.id === "baby-leo" ? "Most Viewed" : "Trending"}
+                    {/* Family Profile */}
+                    <div 
+                      onClick={() => setActiveDemoProfile("family")}
+                      className="group flex flex-col items-center space-y-3 cursor-pointer"
+                    >
+                      <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md bg-gradient-to-tr from-blue-600 to-cyan-500 border border-white/5 group-hover:border-white group-hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center justify-center relative overflow-hidden">
+                        <Users className="w-12 h-12 text-white group-hover:scale-110 transition-transform" />
+                      </div>
+                      <span className="text-sm font-bold text-white/70 group-hover:text-white transition-colors">Family Library</span>
                     </div>
 
-                    {/* Dynamic Top-Right Corner Badge */}
-                    {(show.id === "summer-2025" || show.id === "baby-leo") ? (
-                      <div className="absolute top-2 right-2 w-7 h-7 bg-[#E50914] text-white flex flex-col items-center justify-center font-black rounded-sm border border-white/20 shadow-lg leading-none z-20 select-none">
-                        <span className="text-[6px] uppercase tracking-tighter">TOP</span>
-                        <span className="text-[10px] font-extrabold -mt-0.5">10</span>
+                    {/* Kids Profile */}
+                    <div 
+                      onClick={() => setActiveDemoProfile("kids")}
+                      className="group flex flex-col items-center space-y-3 cursor-pointer"
+                    >
+                      <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md bg-gradient-to-tr from-green-500 to-emerald-400 border border-white/5 group-hover:border-white group-hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center justify-center relative overflow-hidden">
+                        <Sparkles className="w-12 h-12 text-white group-hover:scale-110 transition-transform" />
+                        <span className="absolute bottom-1 bg-black/75 px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-emerald-400 border border-emerald-500/20">PG RATED</span>
+                      </div>
+                      <span className="text-sm font-bold text-white/70 group-hover:text-white transition-colors">Kids Stream</span>
+                    </div>
+
+                    {/* Private Vault Profile (PIN Locked!) */}
+                    <div 
+                      onClick={() => setShowPinScreen(true)}
+                      className="group flex flex-col items-center space-y-3 cursor-pointer animate-pulse-slow"
+                    >
+                      <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-md bg-gradient-to-tr from-purple-700 to-fuchsia-600 border border-white/5 group-hover:border-white group-hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center justify-center relative overflow-hidden">
+                        <Lock className="w-10 h-10 text-white group-hover:scale-110 transition-transform" />
+                        <div className="absolute top-1.5 right-1.5 p-1 bg-black/85 rounded-full border border-white/10">
+                          <Key className="w-3 h-3 text-yellow-400" />
+                        </div>
+                      </div>
+                      <span className="text-sm font-bold text-white/70 group-hover:text-white transition-colors flex items-center gap-1.5">
+                        Private Vault <Lock className="w-3.5 h-3.5 text-netflix-red" />
+                      </span>
+                    </div>
+
+                  </div>
+
+                  <p className="text-xs text-white/40 max-w-sm leading-relaxed">
+                    Test the Supabase-backed security layer. Try unlocking the <strong>Private Vault</strong> to view secret sentimental chronicles.
+                  </p>
+                </motion.div>
+              )}
+
+              {/* B. STAGE 2: PIN SCREEN POPUP */}
+              {showPinScreen && !activeDemoProfile && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="py-6 flex flex-col items-center justify-center text-center space-y-6"
+                >
+                  <div className="space-y-1">
+                    <span className="text-xs text-netflix-red font-black tracking-widest uppercase">Decryption Console</span>
+                    <h3 className="text-2xl font-black text-white">Enter Profile PIN</h3>
+                    <p className="text-xs text-white/50">Decryption Key required to unlock this private directory.</p>
+                  </div>
+
+                  {/* 4 Digit PIN Bubble Indicators */}
+                  <div className={`flex items-center gap-3.5 my-4 ${shakePin ? "animate-bounce" : ""}`}>
+                    {[0, 1, 2, 3].map((idx) => {
+                      const filled = enteredPin.length > idx;
+                      return (
+                        <div 
+                          key={idx}
+                          className={`w-4 h-4 rounded-full border transition-all duration-200 ${
+                            pinError 
+                              ? "bg-netflix-red border-netflix-red" 
+                              : filled 
+                                ? "bg-white border-white scale-110 shadow-[0_0_10px_white]" 
+                                : "bg-transparent border-white/20"
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Tactile Netflix Numpad */}
+                  <div className="grid grid-cols-3 gap-3 w-full max-w-[210px] mx-auto select-none">
+                    {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => handlePinInput(num)}
+                        className="h-12 w-12 rounded-full border border-white/5 bg-white/5 hover:bg-white/20 text-white font-extrabold text-base transition-colors flex items-center justify-center cursor-pointer active:scale-90"
+                      >
+                        {num}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setShowPinScreen(false);
+                        setEnteredPin("");
+                        setPinError(false);
+                      }}
+                      className="h-12 w-12 text-xs font-bold text-white/50 hover:text-white flex items-center justify-center cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handlePinInput("0")}
+                      className="h-12 w-12 rounded-full border border-white/5 bg-white/5 hover:bg-white/20 text-white font-extrabold text-base transition-colors flex items-center justify-center cursor-pointer active:scale-90"
+                    >
+                      0
+                    </button>
+                    <button
+                      onClick={clearLastPinDigit}
+                      className="h-12 w-12 text-xs font-bold text-netflix-red hover:text-red-400 flex items-center justify-center cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  {pinError ? (
+                    <p className="text-xs text-netflix-red font-black tracking-wide uppercase animate-pulse">
+                      🚫 Access Denied. Decryption key signature mismatch.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-emerald-400/80 font-bold bg-emerald-500/10 px-3 py-1 rounded border border-emerald-500/10 tracking-wide uppercase">
+                      🔐 Hint: Enter PIN Code: 1234 to verify Supabase Decrypt
+                    </p>
+                  )}
+                </motion.div>
+              )}
+
+              {/* C. STAGE 3: ACTIVE BROWSE DASHBOARD */}
+              {activeDemoProfile && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="space-y-6"
+                >
+                  
+                  {/* Sandbox Toolbar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/3 border border-white/5 p-4 rounded-xl backdrop-blur-md mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-full ${
+                        activeDemoProfile === "kids" 
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30" 
+                          : activeDemoProfile === "private" 
+                            ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                            : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                      }`}>
+                        {activeDemoProfile === "kids" ? <Sparkles className="w-4 h-4" /> : activeDemoProfile === "private" ? <Unlock className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Active Watch Profile</p>
+                        <h4 className="text-sm font-black uppercase text-white tracking-wide">
+                          {activeDemoProfile === "kids" ? "Kids Library Segment" : activeDemoProfile === "private" ? "Decrypted Private Vault" : "Family Library"}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* S3 Upload Trigger Button (Only for Family & Private) */}
+                    {activeDemoProfile !== "kids" && (
+                      <button
+                        onClick={() => setShowUploadModal(true)}
+                        className="px-4 py-2 text-xs bg-netflix-red hover:bg-netflix-red-hover hover:scale-105 active:scale-95 text-white font-extrabold rounded tracking-wider flex items-center justify-center gap-2 uppercase transition-all shadow-md cursor-pointer border border-[#ff3b46]/20"
+                      >
+                        <Upload className="w-4 h-4" /> Upload Video Memory
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 select-none">
+                    <h3 className="text-lg font-black flex items-center gap-2 text-white">
+                      <Tv className="w-4.5 h-4.5 text-netflix-red" />
+                      Browse Catalog
+                    </h3>
+                    <p className="text-xs text-white/45">Click any card below to open its custom Netflix-style detailed catalog, episodes list, and play.</p>
+                  </div>
+
+                  {/* Netflix Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-2">
+                    {filteredDemoShows.length === 0 ? (
+                      <div className="col-span-full py-16 px-4 bg-zinc-950/30 border border-dashed border-white/10 rounded-tl-[32px] rounded-br-[32px] rounded-tr-[12px] rounded-bl-[12px] text-center space-y-4">
+                        <Lock className="w-12 h-12 text-[#ff3b46] mx-auto animate-pulse" />
+                        <div className="space-y-1">
+                          <h4 className="font-extrabold text-white text-base uppercase tracking-wider">No Private Memories Yet</h4>
+                          <p className="text-xs text-white/50 max-w-sm mx-auto font-medium leading-relaxed">
+                            In private mode, your standard memories are hidden for absolute security. Click the **"Upload Video Memory"** button above to secure your first private moment in this locked zone.
+                          </p>
+                        </div>
                       </div>
                     ) : (
-                      <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-[2px] border border-[#E50914]/40 rounded px-1.5 py-0.5 flex items-center gap-1 z-20 shadow-md text-white font-extrabold text-[8px] tracking-wide select-none">
-                        <Heart className="w-2.5 h-2.5 text-[#E50914] fill-[#E50914] animate-pulse" />
-                        <span className="text-white/90">LOVED</span>
-                      </div>
+                      filteredDemoShows.map((show) => (
+                        <div 
+                          key={show.id}
+                          onClick={() => {
+                            setActiveShow(show);
+                            setPlayingEpisode(null);
+                          }}
+                          className="group relative bg-[#1c1c1c] rounded-tl-[28px] rounded-br-[28px] rounded-tr-[10px] rounded-bl-[10px] overflow-hidden cursor-pointer border border-white/5 hover:border-netflix-red/40 transition-all duration-300 transform hover:-translate-y-2 shadow-lg hover:shadow-[0_12px_25px_rgba(0,0,0,0.7)]"
+                        >
+                          {/* Poster Image */}
+                          <div className="aspect-[16/9] w-full overflow-hidden bg-[#2a2a2a] relative">
+                            <img 
+                              src={show.coverUrl} 
+                              alt={show.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent"></div>
+                            
+                            {/* Tag */}
+                            <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-tl-[10px] rounded-br-[10px] rounded-tr-[4px] rounded-bl-[4px] font-black text-[8px] sm:text-[9px] uppercase tracking-wider shadow-md bg-netflix-red text-white border border-white/10 select-none">
+                              {show.privateLocked ? "Private Vault" : show.id === "summer-2025" ? "Recently Added" : "Family Tier"}
+                            </div>
+
+                            {/* Top-Right corner loved badge */}
+                            <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-[2px] border border-netflix-red/35 rounded-tr-[10px] rounded-bl-[10px] rounded-tl-[4px] rounded-br-[4px] px-1.5 py-0.5 flex items-center gap-1 z-20 shadow-md text-white font-extrabold text-[8px] tracking-wide select-none">
+                              <Heart className="w-2.5 h-2.5 text-netflix-red fill-netflix-red" />
+                              <span className="text-white/90">99% Match</span>
+                            </div>
+
+                            {/* Hover Play Icon */}
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 backdrop-blur-[2px]">
+                              <div className="p-3 bg-netflix-red rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
+                                <Play className="w-5 h-5 text-white fill-current ml-0.5" />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Details */}
+                          <div className="p-4 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                {show.rating}
+                              </span>
+                              <span className="text-white/40 text-xs font-semibold">{show.year}</span>
+                            </div>
+
+                            <h4 className="text-sm font-bold text-white group-hover:text-netflix-red transition-colors truncate">
+                              {show.title}
+                            </h4>
+                            
+                            <p className="text-[11px] text-white/50 font-medium line-clamp-1">
+                              {show.tagline}
+                            </p>
+                          </div>
+                        </div>
+                      ))
                     )}
-
-                    {/* Hover Play Glow */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 backdrop-blur-[2px]">
-                      <div className="p-3 bg-netflix-red rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
-                        <Play className="w-5 h-5 text-white fill-current ml-0.5" />
-                      </div>
-                    </div>
                   </div>
-
-                  {/* Poster Details */}
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        {show.matchScore}
-                      </span>
-                      <span className="text-white/40 text-xs font-semibold">{show.year}</span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-white group-hover:text-netflix-red transition-colors truncate">
-                      {show.title}
-                    </h4>
-                    
-                    <p className="text-[11px] text-white/50 font-medium line-clamp-1">
-                      {show.tagline}
-                    </p>
-
-                    <div className="flex gap-1.5 pt-1.5 flex-wrap">
-                      {show.genres.slice(0, 2).map((g, idx) => (
-                        <span key={idx} className="text-[9px] bg-white/5 border border-white/5 rounded px-1.5 py-0.5 text-white/60">
-                          {g}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
           </div>
         </div>
       </section>
 
 
-      {/* 4. MOCKUP DETAIL OVERLAY / POPUP PORTAL (Simulated Netflix Portal) */}
-      {activeShow && (
-        <div className="fixed inset-0 z-40 bg-black/80 flex items-center justify-center p-4 overflow-y-auto animate-fade-in backdrop-blur-md">
-          <div className="relative w-full max-w-3xl bg-[#181818] border border-white/10 rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] max-h-[90vh] flex flex-col my-8 animate-zoom-in">
-            
-            {/* Top Close Button */}
-            <button 
-              onClick={() => {
-                setActiveShow(null);
-                setPlayingEpisode(null);
-              }}
-              className="absolute top-4 right-4 z-50 p-2.5 bg-black/80 hover:bg-black text-white rounded-full border border-white/10 hover:border-white/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+      {/* 4. AWS S3 DIRECT UPLOAD SIMULATOR MODAL */}
+      <AnimatePresence>
+        {showUploadModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 30 }}
+              className="relative w-full max-w-[500px] bg-[#141414] border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(229,9,20,0.3)] text-white"
             >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Detail Banner Backdrop */}
-            <div className="relative h-64 sm:h-80 w-full overflow-hidden flex-shrink-0">
-              <img 
-                src={activeShow.backdropUrl} 
-                alt={activeShow.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-black/35 to-transparent"></div>
-              
-              {/* Title Info overlay */}
-              <div className="absolute bottom-6 left-6 sm:left-10 right-6 space-y-2">
-                <span className="text-[10px] tracking-[0.2em] font-extrabold text-netflix-red uppercase bg-black/60 border border-white/10 px-3 py-1 rounded w-fit block">
-                  Memory Stream
-                </span>
-                <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight netflix-text-shadow">
-                  {activeShow.title}
-                </h2>
-                <p className="text-white/80 text-xs sm:text-sm font-semibold italic max-w-md netflix-text-shadow">
-                  "{activeShow.tagline}"
-                </p>
-              </div>
-            </div>
-
-            {/* Scrollable details and episode content */}
-            <div className="p-6 sm:p-10 space-y-8 overflow-y-auto flex-grow">
-              
-              {/* Flex Grid details */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Left descriptions */}
-                <div className="md:col-span-2 space-y-4">
-                  <div className="flex items-center gap-3.5 flex-wrap text-xs sm:text-sm">
-                    <span className="font-extrabold text-emerald-400">{activeShow.matchScore}</span>
-                    <span className="text-white/60 font-semibold">{activeShow.year}</span>
-                    <span className="px-2 py-0.5 border border-white/30 text-white/80 font-bold rounded text-[10px] select-none">
-                      {activeShow.rating}
-                    </span>
-                    <span className="text-white/60 font-semibold">{activeShow.seasonsCount} Season(s)</span>
-                    <span className="px-1.5 py-0.5 bg-netflix-red/10 border border-netflix-red/35 text-netflix-red font-bold text-[9px] rounded uppercase">
-                      4K Ultra HD
-                    </span>
+              {/* Header */}
+              <div className="bg-white/3 border-b border-white/5 px-6 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-netflix-red/10 border border-netflix-red/20 rounded text-netflix-red">
+                    <Server className="w-4 h-4 animate-pulse" />
                   </div>
-                  <p className="text-white/80 text-sm leading-relaxed font-medium">
-                    {activeShow.description}
+                  <div>
+                    <h3 className="text-sm font-black tracking-widest uppercase">Secure Upload Console</h3>
+                    <p className="text-[10px] text-white/40 font-bold uppercase tracking-wide">Secure Private Vault Upload</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    if (!uploading) {
+                      setShowUploadModal(false);
+                      setUploadLogs([]);
+                    }
+                  }}
+                  disabled={uploading}
+                  className="p-1 text-white/50 hover:text-white border border-white/10 hover:bg-white/5 rounded transition-all cursor-pointer disabled:opacity-40"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Area */}
+              <div className="p-6 space-y-5">
+                {!uploading && !uploadComplete ? (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-white/50 uppercase tracking-widest">Memory Title</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Scuba Diving at Lake Sunset"
+                        value={uploadTitle}
+                        onChange={(e) => setUploadTitle(e.target.value)}
+                        className="w-full h-11 bg-black border border-white/10 hover:border-white/20 focus:border-netflix-red focus:outline-none rounded px-3 text-sm transition-colors text-white font-medium"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-white/50 uppercase tracking-widest">Select Mock File (Raw HD)</label>
+                      <select 
+                        value={uploadFile}
+                        onChange={(e) => setUploadFile(e.target.value)}
+                        className="w-full h-11 bg-black border border-white/10 hover:border-white/20 focus:border-netflix-red focus:outline-none rounded px-3 text-sm transition-colors text-white font-medium"
+                      >
+                        <option value="grandma_birthday_8k.mp4">grandma_birthday_8k.mp4 (450 MB)</option>
+                        <option value="lake_sunset_diving_gopro.mov">lake_sunset_diving_gopro.mov (1.2 GB)</option>
+                        <option value="wedding_grand_waltz_4k.mkv">wedding_grand_waltz_4k.mkv (3.4 GB)</option>
+                        <option value="toddler_first_giggles.mp4">toddler_first_giggles.mp4 (80 MB)</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={handleUploadSubmit}
+                      className="w-full h-11 bg-netflix-red hover:bg-netflix-red-hover text-white font-black text-xs uppercase tracking-widest transition-all rounded shadow-md cursor-pointer flex items-center justify-center gap-2 border border-[#ff3b46]/20 mt-2"
+                    >
+                      <Zap className="w-4 h-4 fill-current" /> Upload to Private Vault
+                    </button>
+                  </div>
+                ) : (
+                  // Uploading Console View
+                  <div className="space-y-5">
+                    {/* Live Progress Bar */}
+                    <div className="space-y-1.5 select-none">
+                      <div className="flex justify-between items-center text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5 text-netflix-red animate-pulse" />
+                          Upload Progress
+                        </span>
+                        <span className="text-white font-black">{uploadProgress}%</span>
+                      </div>
+                      
+                      <div className="w-full h-2 bg-black border border-white/5 rounded-full overflow-hidden relative">
+                        <div 
+                          className="h-full bg-gradient-to-r from-netflix-red to-red-400 transition-all duration-100"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[9px] text-white/35 font-semibold">
+                        <span>Speed: <strong>54.2 MB/s</strong></span>
+                        <span>Direct Connection: <strong>Secure SSL Link</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Console Logs Box */}
+                    <div className="h-44 bg-black border border-white/5 p-4 rounded-xl font-mono text-[10px] overflow-y-auto space-y-1.5 leading-relaxed text-white/60">
+                      {uploadLogs.map((log, idx) => {
+                        const isStringLog = log && typeof log === "string";
+                        const isSuccess = isStringLog && (log.startsWith("✅") || log.startsWith("🔒"));
+                        const isSync = isStringLog && (log.startsWith("🔄") || log.startsWith("🔑"));
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`${
+                              isSuccess
+                                ? "text-emerald-400 font-bold" 
+                                : isSync
+                                  ? "text-netflix-red"
+                                  : "text-white/80"
+                            }`}
+                          >
+                            {log}
+                          </div>
+                        );
+                      })}
+                      {uploading && (
+                        <div className="flex items-center gap-1.5 text-white/30 italic">
+                          <span className="inline-block w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+                          Writing packets...
+                        </div>
+                      )}
+                    </div>
+
+                    {uploadComplete && (
+                      <div className="text-center text-xs text-emerald-400 font-bold uppercase tracking-wider py-1 bg-emerald-500/10 rounded border border-emerald-500/20 animate-bounce">
+                        🎉 Success! Added to your library.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
+      {/* 5. MOCKUP DETAIL OVERLAY / POPUP PORTAL (Simulated Netflix Portal) */}
+      <AnimatePresence>
+        {activeShow && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/80 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 30 }}
+              className="relative w-full max-w-3xl bg-[#141414] border border-white/10 rounded-2xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] max-h-[90vh] flex flex-col my-8"
+            >
+              
+              {/* Top Close Button */}
+              <button 
+                onClick={() => {
+                  setActiveShow(null);
+                  setPlayingEpisode(null);
+                }}
+                className="absolute top-4 right-4 z-50 p-2.5 bg-black/80 hover:bg-black text-white rounded-full border border-white/10 hover:border-white/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Detail Banner Backdrop */}
+              <div className="relative h-64 sm:h-80 w-full overflow-hidden flex-shrink-0">
+                <img 
+                  src={activeShow.backdropUrl} 
+                  alt={activeShow.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-black/35 to-transparent"></div>
+                
+                {/* Title Info overlay */}
+                <div className="absolute bottom-6 left-6 sm:left-10 right-6 space-y-2">
+                  <span className="text-[10px] tracking-[0.2em] font-extrabold text-netflix-red uppercase bg-black/60 border border-white/10 px-3 py-1 rounded w-fit block">
+                    Memory Stream
+                  </span>
+                  <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight netflix-text-shadow">
+                    {activeShow.title}
+                  </h2>
+                  <p className="text-white/80 text-xs sm:text-sm font-semibold italic max-w-md netflix-text-shadow">
+                    "{activeShow.tagline}"
                   </p>
                 </div>
-
-                {/* Right detail specs */}
-                <div className="bg-black/40 border border-white/5 p-4 rounded-xl space-y-3 text-xs sm:text-sm">
-                  <div>
-                    <span className="text-white/40 block font-semibold">Genres</span>
-                    <p className="text-white/80 font-medium">{activeShow.genres.join(", ")}</p>
-                  </div>
-                  <div>
-                    <span className="text-white/40 block font-semibold">Privacy Vault</span>
-                    <p className="text-emerald-400 font-bold flex items-center gap-1.5">
-                      <Shield className="w-3.5 h-3.5" /> High Encryption AES
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-white/40 block font-semibold">Collaborators</span>
-                    <p className="text-white/80 font-medium">Family (Admin Approved)</p>
-                  </div>
-                </div>
-
               </div>
 
-              {/* EPISODE ROWS CONTAINER */}
-              <div className="space-y-4">
-                <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
-                  <Film className="w-4 h-4 text-netflix-red" />
-                  Episodes List (Season 1)
-                </h3>
+              {/* Scrollable details and episode content */}
+              <div className="p-6 sm:p-10 space-y-8 overflow-y-auto flex-grow">
                 
-                <div className="space-y-3.5">
-                  {activeShow.episodes.map((ep, idx) => (
-                    <div 
-                      key={ep.id}
-                      onClick={() => handlePlayEpisode(ep)}
-                      className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-black/35 hover:bg-black/75 border border-white/5 hover:border-netflix-red/30 rounded-xl cursor-pointer transition-all gap-4"
-                    >
-                      <div className="flex items-start gap-4">
-                        {/* Simulated Thumbnail */}
-                        <div className="relative aspect-[16/9] w-28 sm:w-32 bg-[#252525] border border-white/10 rounded overflow-hidden flex-shrink-0">
-                          <img 
-                            src={activeShow.coverUrl} 
-                            alt={ep.title}
-                            className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform"
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <Play className="w-6 h-6 text-white opacity-70 group-hover:scale-110 group-hover:opacity-100 transition-all fill-current" />
-                          </div>
-                        </div>
-
-                        {/* Title & summary */}
-                        <div className="space-y-1">
-                          <h4 className="font-bold text-sm text-white group-hover:text-netflix-red transition-colors flex items-center gap-2">
-                            {ep.title}
-                          </h4>
-                          <p className="text-xs text-white/50 line-clamp-2 leading-relaxed">
-                            {ep.summary}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Runtime */}
-                      <span className="text-xs text-white/40 font-bold bg-white/5 border border-white/5 px-2.5 py-1 rounded w-fit sm:self-center">
-                        {ep.duration}
+                {/* Flex Grid details */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  {/* Left descriptions */}
+                  <div className="md:col-span-2 space-y-4">
+                    <div className="flex items-center gap-3.5 flex-wrap text-xs sm:text-sm">
+                      <span className="font-extrabold text-emerald-400">{activeShow.matchScore}</span>
+                      <span className="text-white/60 font-semibold">{activeShow.year}</span>
+                      <span className="px-2 py-0.5 border border-white/30 text-white/80 font-bold rounded text-[10px] select-none">
+                        {activeShow.rating}
+                      </span>
+                      <span className="text-white/60 font-semibold">{activeShow.seasonsCount} Season(s)</span>
+                      <span className="px-1.5 py-0.5 bg-netflix-red/10 border border-netflix-red/35 text-netflix-red font-bold text-[9px] rounded uppercase">
+                        4K Ultra HD
                       </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-
-            {/* Footer lock tag */}
-            <div className="bg-[#101010] border-t border-white/5 p-4 text-center text-xs text-white/40 font-medium flex items-center justify-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-netflix-red" />
-              Sign up to upload your own video memory files to this personal viewer dashboard
-            </div>
-
-          </div>
-        </div>
-      )}
-
-
-      {/* 5. SIMULATED VIDEO PLAYER OVERLAY (Sandbox Playback) */}
-      {playingEpisode && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4 sm:p-8 animate-fade-in font-sans">
-          
-          {/* Header row */}
-          <div className="flex items-center justify-between z-10 w-full bg-gradient-to-b from-black/80 to-transparent p-4">
-            <button 
-              onClick={() => setPlayingEpisode(null)}
-              className="flex items-center gap-2 text-white/70 hover:text-white transition-colors cursor-pointer text-sm font-bold bg-black/50 border border-white/10 px-4 py-2 rounded-full"
-            >
-              <X className="w-4 h-4" /> Exit Private Stream
-            </button>
-            <div className="text-center">
-              <span className="text-netflix-red text-[10px] tracking-widest font-black uppercase block">Now Replaying Memory</span>
-              <span className="font-extrabold text-white text-base truncate max-w-xs block">{playingEpisode.title}</span>
-            </div>
-            <div className="w-24 hidden sm:block"></div>
-          </div>
-
-          {/* Core Screen */}
-          <div className="flex-grow flex items-center justify-center relative my-4 overflow-hidden rounded-xl border border-white/10 bg-black">
-            {playbackLoading ? (
-              <div className="text-center space-y-3">
-                <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin mx-auto"></div>
-                <p className="text-white/45 text-xs font-bold tracking-widest uppercase animate-pulse">Establishing Secure Stream...</p>
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                
-                {/* Realistic memory screen placeholder */}
-                <div className="absolute inset-0 bg-black flex items-center justify-center overflow-hidden">
-                  {/* Rotating visual mesh to simulate active cinematic environment */}
-                  <div className="absolute inset-0 bg-cover bg-center filter blur-lg opacity-25 scale-110"
-                    style={{ backgroundImage: `url(${activeShow?.backdropUrl})` }}
-                  ></div>
-                  <div className="absolute inset-0 bg-radial-gradient(rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.9) 100%)"></div>
-                  
-                  {/* Dynamic moving soundwave visualizer */}
-                  <div className="flex items-end gap-1.5 h-16 opacity-30 select-none pointer-events-none">
-                    <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "40%", animationDuration: "1.1s" }}></span>
-                    <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "80%", animationDuration: "0.8s" }}></span>
-                    <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "60%", animationDuration: "1.5s" }}></span>
-                    <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "95%", animationDuration: "0.5s" }}></span>
-                    <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "35%", animationDuration: "1.2s" }}></span>
-                  </div>
-                </div>
-
-                {/* Playing details card */}
-                <div className="z-10 bg-black/85 border border-white/10 p-6 rounded-2xl max-w-sm text-center space-y-4 backdrop-blur-md shadow-2xl mx-4">
-                  <div className="p-3 bg-netflix-red/10 border border-netflix-red/20 rounded-full w-fit mx-auto">
-                    <Tv className="w-8 h-8 text-netflix-red animate-pulse" />
-                  </div>
-                  <div className="space-y-1">
-                    <h5 className="font-extrabold text-white text-base">Replay Simulation Active</h5>
-                    <p className="text-white/60 text-xs leading-relaxed">
-                      On the live app, this streams your high-fidelity mp4/mkv video files straight from your private AWS S3 bucket.
+                    <p className="text-white/80 text-sm leading-relaxed font-medium">
+                      {activeShow.description}
                     </p>
                   </div>
-                  <div className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 py-1.5 px-3 rounded flex items-center justify-center gap-1">
-                    <Shield className="w-3.5 h-3.5" /> High Secure Token Access Granted
+
+                  {/* Right detail specs */}
+                  <div className="bg-black/40 border border-white/5 p-4 rounded-xl space-y-3 text-xs sm:text-sm">
+                    <div>
+                      <span className="text-white/40 block font-semibold">Genres</span>
+                      <p className="text-white/80 font-medium">{activeShow.genres.join(", ")}</p>
+                    </div>
+                    <div>
+                      <span className="text-white/40 block font-semibold">Privacy Vault</span>
+                      <p className="text-emerald-400 font-bold flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5" /> High Encryption AES
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-white/40 block font-semibold">Collaborators</span>
+                      <p className="text-white/80 font-medium">Family (Admin Approved)</p>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* EPISODE ROWS CONTAINER */}
+                <div className="space-y-4">
+                  <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                    <Film className="w-4 h-4 text-netflix-red" />
+                    Episodes List (Season 1)
+                  </h3>
+                  
+                  <div className="space-y-3.5">
+                    {activeShow.episodes.map((ep: any, idx: number) => {
+                      const isSimulatedUpload = ep.id.toString().startsWith("custom-ep-");
+                      return (
+                        <div 
+                          key={ep.id}
+                          onClick={() => handlePlayEpisode(ep)}
+                          className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-black/35 hover:bg-black/75 border border-white/5 hover:border-netflix-red/30 rounded-xl cursor-pointer transition-all gap-4"
+                        >
+                          <div className="flex items-start gap-4">
+                            {/* Simulated Thumbnail */}
+                            <div className="relative aspect-[16/9] w-28 sm:w-32 bg-[#252525] border border-white/10 rounded overflow-hidden flex-shrink-0">
+                              <img 
+                                src={activeShow.coverUrl} 
+                                alt={ep.title}
+                                className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Play className="w-6 h-6 text-white opacity-70 group-hover:scale-110 group-hover:opacity-100 transition-all fill-current" />
+                              </div>
+                            </div>
+
+                            {/* Title & summary */}
+                            <div className="space-y-1">
+                              <h4 className="font-bold text-sm text-white group-hover:text-netflix-red transition-colors flex items-center gap-2">
+                                {ep.title}
+                                {isSimulatedUpload && (
+                                  <span className="px-1.5 py-0.5 rounded bg-netflix-red border border-[#ff3b46]/20 font-black text-[7px] uppercase tracking-widest animate-pulse text-white">NEW</span>
+                                )}
+                              </h4>
+                              <p className="text-xs text-white/50 line-clamp-2 leading-relaxed">
+                                {ep.summary}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Runtime */}
+                          <span className="text-xs text-white/40 font-bold bg-white/5 border border-white/5 px-2.5 py-1 rounded w-fit sm:self-center">
+                            {ep.duration}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
               </div>
-            )}
-          </div>
 
-          {/* Footer controls HUD */}
-          <div className="z-10 w-full bg-gradient-to-t from-black/90 to-transparent p-4 space-y-4">
-            
-            {/* Timeline Progress Slider */}
-            <div className="space-y-1.5 select-none">
-              <div className="flex justify-between text-xs text-white/50 font-bold">
-                <span>{playbackLoading ? "0:00" : `0:${Math.floor(playbackProgress * 0.1).toString().padStart(2, "0")}`}</span>
-                <span>{playingEpisode.duration}</span>
+              {/* Footer lock tag */}
+              <div className="bg-[#101010] border-t border-white/5 p-4 text-center text-xs text-white/40 font-medium flex items-center justify-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-netflix-red" />
+                Sign up to upload your own video memory files to this personal viewer dashboard
               </div>
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
+      {/* 6. SIMULATED VIDEO PLAYER OVERLAY (Sandbox Playback) */}
+      <AnimatePresence>
+        {playingEpisode && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4 sm:p-8 font-sans"
+          >
+            
+            {/* Header row */}
+            <div className="flex items-center justify-between z-10 w-full bg-gradient-to-b from-black/80 to-transparent p-4">
+              <button 
+                onClick={() => setPlayingEpisode(null)}
+                className="flex items-center gap-2 text-white/70 hover:text-white transition-colors cursor-pointer text-sm font-bold bg-black/50 border border-white/10 px-4 py-2 rounded-full"
+              >
+                <X className="w-4 h-4" /> Exit Private Stream
+              </button>
+              <div className="text-center">
+                <span className="text-netflix-red text-[10px] tracking-widest font-black uppercase block">Now Replaying Memory</span>
+                <span className="font-extrabold text-white text-base truncate max-w-xs block">{playingEpisode.title}</span>
+              </div>
+              <div className="w-24 hidden sm:block"></div>
+            </div>
+
+            {/* Core Screen */}
+            <div className="flex-grow flex items-center justify-center relative my-4 overflow-hidden rounded-xl border border-white/10 bg-black">
+              {playbackLoading ? (
+                <div className="text-center space-y-3">
+                  <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-white/45 text-xs font-bold tracking-widest uppercase animate-pulse">Establishing Secure Stream...</p>
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  
+                  {/* Realistic memory screen placeholder */}
+                  <div className="absolute inset-0 bg-black flex items-center justify-center overflow-hidden">
+                    {/* Rotating visual mesh to simulate active cinematic environment */}
+                    <div className="absolute inset-0 bg-cover bg-center filter blur-lg opacity-25 scale-110"
+                      style={{ backgroundImage: `url(${activeShow?.backdropUrl})` }}
+                    ></div>
+                    <div className="absolute inset-0 bg-radial-gradient(rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.9) 100%)"></div>
+                    
+                    {/* Dynamic moving soundwave visualizer */}
+                    <div className="flex items-end gap-1.5 h-16 opacity-30 select-none pointer-events-none">
+                      <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "40%", animationDuration: "1.1s" }}></span>
+                      <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "80%", animationDuration: "0.8s" }}></span>
+                      <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "60%", animationDuration: "1.5s" }}></span>
+                      <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "95%", animationDuration: "0.5s" }}></span>
+                      <span className="w-1.5 bg-netflix-red rounded animate-pulse" style={{ height: "35%", animationDuration: "1.2s" }}></span>
+                    </div>
+                  </div>
+
+                  {/* Playing details card */}
+                  <div className="z-10 bg-black/85 border border-white/10 p-6 rounded-2xl max-w-sm text-center space-y-4 backdrop-blur-md shadow-2xl mx-4">
+                    <div className="p-3 bg-netflix-red/10 border border-netflix-red/20 rounded-full w-fit mx-auto animate-bounce">
+                      <Tv className="w-8 h-8 text-netflix-red animate-pulse" />
+                    </div>
+                    <div className="space-y-1">
+                      <h5 className="font-extrabold text-white text-base">Replay Simulation Active</h5>
+                      <p className="text-white/60 text-xs leading-relaxed">
+                        This streams your high-fidelity video memories instantly and securely from your private cloud storage.
+                      </p>
+                    </div>
+                    <div className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 py-1.5 px-3 rounded flex items-center justify-center gap-1">
+                      <Shield className="w-3.5 h-3.5" /> Secure Private Access Granted
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* Footer controls HUD */}
+            <div className="z-10 w-full bg-gradient-to-t from-black/90 to-transparent p-4 space-y-4">
               
-              {/* Progress track */}
-              <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden cursor-pointer relative group">
-                <div 
-                  className="h-full bg-netflix-red transition-all duration-100 relative"
-                  style={{ width: `${playbackProgress}%` }}
-                >
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              {/* Timeline Progress Slider */}
+              <div className="space-y-1.5 select-none">
+                <div className="flex justify-between text-xs text-white/50 font-bold">
+                  <span>{playbackLoading ? "0:00" : `0:${Math.floor(playbackProgress * 0.1).toString().padStart(2, "0")}`}</span>
+                  <span>{playingEpisode.duration}</span>
+                </div>
+                
+                {/* Progress track */}
+                <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden cursor-pointer relative group">
+                  <div 
+                    className="h-full bg-netflix-red transition-all duration-100 relative"
+                    style={{ width: `${playbackProgress}%` }}
+                  >
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Play buttons controls row */}
-            <div className="flex items-center justify-between text-white">
-              
-              {/* Left action panel */}
-              <div className="flex items-center gap-6">
-                <button 
-                  onClick={() => setIsPlaybackPaused(!isPlaybackPaused)}
-                  disabled={playbackLoading}
-                  className="hover:text-netflix-red transition-colors p-1.5 cursor-pointer disabled:opacity-30"
-                  title={isPlaybackPaused ? "Play" : "Pause"}
-                >
-                  {isPlaybackPaused ? (
-                    <Play className="w-6 h-6 fill-current" />
-                  ) : (
-                    <div className="flex gap-1.5">
-                      <span className="w-1.5 h-6 bg-white rounded-sm"></span>
-                      <span className="w-1.5 h-6 bg-white rounded-sm"></span>
-                    </div>
-                  )}
-                </button>
+              {/* Play buttons controls row */}
+              <div className="flex items-center justify-between text-white">
+                
+                {/* Left action panel */}
+                <div className="flex items-center gap-6">
+                  <button 
+                    onClick={() => setIsPlaybackPaused(!isPlaybackPaused)}
+                    disabled={playbackLoading}
+                    className="hover:text-netflix-red transition-colors p-1.5 cursor-pointer disabled:opacity-30"
+                    title={isPlaybackPaused ? "Play" : "Pause"}
+                  >
+                    {isPlaybackPaused ? (
+                      <Play className="w-6 h-6 fill-current" />
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <span className="w-1.5 h-6 bg-white rounded-sm"></span>
+                        <span className="w-1.5 h-6 bg-white rounded-sm"></span>
+                      </div>
+                    )}
+                  </button>
 
-                <button 
-                  onClick={() => setIsPlaybackMuted(!isPlaybackMuted)}
-                  className="hover:text-netflix-red transition-colors p-1.5 cursor-pointer"
-                  title={isPlaybackMuted ? "Unmute" : "Mute"}
-                >
-                  {isPlaybackMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
-                </button>
+                  <button 
+                    onClick={() => setIsPlaybackMuted(!isPlaybackMuted)}
+                    className="hover:text-netflix-red transition-colors p-1.5 cursor-pointer"
+                    title={isPlaybackMuted ? "Unmute" : "Mute"}
+                  >
+                    {isPlaybackMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+                  </button>
+                </div>
+
+                {/* Right stats panel */}
+                <div className="text-right text-xs font-semibold text-white/40">
+                  <p>Private Decrypt Node: <span className="text-emerald-500 font-bold">AES-256</span></p>
+                </div>
+
               </div>
-
-              {/* Right stats panel */}
-              <div className="text-right text-xs font-semibold text-white/40">
-                <p>Private Decrypt Node: <span className="text-emerald-500 font-bold">AES-256</span></p>
-              </div>
-
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
 
-      {/* 6. "BEHIND THE STREAMS" INTERACTIVE WORKFLOW TABS */}
-      <section className="py-24 px-6 md:px-16 bg-[#181818] border-t border-white/5 relative z-20">
+      {/* 7. "BEHIND THE STREAMS" INTERACTIVE WORKFLOW TABS */}
+      <section className="py-24 px-6 md:px-16 bg-[#0c0c0c] border-t border-white/5 relative z-20">
         <div className="max-w-5xl mx-auto space-y-16">
           
           <div className="text-center space-y-4">
@@ -974,15 +1523,14 @@ export default function RootLandingPage() {
             {[
               { label: "1. Create Show", desc: "Define Your Catalog" },
               { label: "2. Structure Seasons", desc: "Map Years or Trips" },
-              { label: "3. Upload Media", desc: "Secure Direct S3" },
-              { label: "4. Watch Anywhere", desc: "Enjoy Popcorn & Stream" }
-            ].map((step, idx) => (
+              { label: "3. Upload Media", desc: "Secure Cloud Storage" },
+                   ].map((step, idx) => (
               <button
                 key={idx}
                 onClick={() => setActiveStep(idx)}
-                className={`p-4 rounded-xl text-left border transition-all duration-300 cursor-pointer ${
+                className={`p-4 rounded-tl-[20px] rounded-br-[20px] rounded-tr-[8px] rounded-bl-[8px] text-left border transition-all duration-300 cursor-pointer ${
                   activeStep === idx 
-                    ? "bg-black/60 border-netflix-red shadow-[0_4px_20px_rgba(229,9,20,0.15)] text-white" 
+                    ? "bg-black/60 border-netflix-red shadow-[0_4px_20px_rgba(184,29,36,0.15)] text-white" 
                     : "bg-[#202020]/40 border-white/5 text-white/50 hover:bg-[#202020]/75 hover:text-white"
                 }`}
               >
@@ -994,28 +1542,28 @@ export default function RootLandingPage() {
           </div>
 
           {/* Workflow Interactive Content Card */}
-          <div className="bg-black/65 border border-white/10 rounded-2xl p-6 sm:p-10 backdrop-blur-md shadow-2xl flex flex-col md:flex-row items-center gap-10 animate-fade-in">
+          <div className="bg-black/65 border border-white/10 rounded-tl-[36px] rounded-br-[36px] rounded-tr-[12px] rounded-bl-[12px] p-6 sm:p-10 backdrop-blur-md shadow-2xl flex flex-col md:flex-row items-center gap-10">
             
             {/* Left description text */}
             <div className="space-y-6 flex-1">
-              <div className="inline-flex p-3 bg-netflix-red/10 border border-netflix-red/20 rounded-xl">
-                {activeStep === 0 && <Film className="w-8 h-8 text-netflix-red" />}
-                {activeStep === 1 && <Calendar className="w-8 h-8 text-netflix-red" />}
-                {activeStep === 2 && <Database className="w-8 h-8 text-netflix-red" />}
-                {activeStep === 3 && <Tv className="w-8 h-8 text-netflix-red" />}
+              <div className="inline-flex p-3 bg-netflix-red/10 border border-netflix-red/20 rounded-tl-[12px] rounded-br-[12px] rounded-tr-[4px] rounded-bl-[4px]">
+                {activeStep === 0 && <Film className="w-8 h-8 text-netflix-red animate-pulse" />}
+                {activeStep === 1 && <Calendar className="w-8 h-8 text-netflix-red animate-pulse" />}
+                {activeStep === 2 && <Database className="w-8 h-8 text-netflix-red animate-pulse" />}
+                {activeStep === 3 && <Tv className="w-8 h-8 text-netflix-red animate-pulse" />}
               </div>
 
               <div className="space-y-2">
                 <h4 className="text-2xl font-black">
                   {activeStep === 0 && "Define Your Showcase Title"}
                   {activeStep === 1 && "Segment Memories into Chronological Seasons"}
-                  {activeStep === 2 && "Direct, Rapid AWS S3 Vault Uploads"}
+                  {activeStep === 2 && "Direct, Rapid Private Vault Uploads"}
                   {activeStep === 3 && "Unwind with Immersive Living Room Streaming"}
                 </h4>
                 <p className="text-sm text-white/70 leading-relaxed font-medium">
                   {activeStep === 0 && "Create high-level Category containers for major life areas. Whether it's a child's school journey, an annual winter getaway, or your wedding catalog, name your Show and assign a stunning poster banner image to fit your bookshelf catalog."}
                   {activeStep === 1 && "Break down long-standing events with structured Seasons. Define 'Season 2025' or 'The Honeymoon Trip' to divide your video streams into comfortable, bite-sized chronological containers that keep the vault clean and gorgeous."}
-                  {activeStep === 2 && "Upload raw high-quality video formats straight from your browser. We generate direct secure tickets that stream data straight to private AWS S3 buckets, assuring lightning-fast parallel uploads and complete absolute privacy."}
+                  {activeStep === 2 && "Upload raw high-quality video formats straight from your browser. We generate direct secure keys that stream data straight to your private storage vault, assuring lightning-fast uploads and absolute privacy."}
                   {activeStep === 3 && "Access your memory vault on any web browser, tablet, or mobile phone. Set up specialized profile passwords for each family member, select standard episode cards, and hit play. Grab a bowl of popcorn and hit replay!"}
                 </p>
               </div>
@@ -1036,13 +1584,13 @@ export default function RootLandingPage() {
                 )}
                 {activeStep === 2 && (
                   <>
-                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Dynamic AWS presigned URL tickets for high-encryption</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Dynamic secure access keys for high-level privacy</li>
                     <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Direct parallel file chunks uploading without proxy limits</li>
                   </>
                 )}
                 {activeStep === 3 && (
                   <>
-                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Up to 6 custom watch profiles with separate passwords</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Up to 6 watch profiles with separate security pins</li>
                     <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Responsive fluid layout optimized for tablets and mobile</li>
                   </>
                 )}
@@ -1050,12 +1598,12 @@ export default function RootLandingPage() {
             </div>
 
             {/* Right mock graphic container */}
-            <div className="flex-1 w-full bg-[#1b1b1b] border border-white/10 p-6 rounded-2xl flex flex-col justify-between aspect-video relative overflow-hidden shadow-xl self-stretch min-h-[220px]">
+            <div className="flex-1 w-full bg-[#141414] border border-white/10 p-6 rounded-2xl flex flex-col justify-between aspect-video relative overflow-hidden shadow-xl self-stretch min-h-[220px]">
               
               {/* Top status bar mock */}
               <div className="flex justify-between items-center text-[10px] text-white/40 uppercase tracking-widest select-none pb-2 border-b border-white/5">
-                <span>MemoryFlix Simulator</span>
-                <span className="text-netflix-red font-bold animate-pulse">Running</span>
+                <span>MemoryFlix Core Engine</span>
+                <span className="text-netflix-red font-bold flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> SECURE</span>
               </div>
 
               {/* Central Graphic changing on active step */}
@@ -1065,7 +1613,7 @@ export default function RootLandingPage() {
                 {activeStep === 0 && (
                   <div className="space-y-3 w-full max-w-xs bg-black/45 border border-white/10 p-4 rounded-xl backdrop-blur">
                     <div className="h-6 w-24 bg-netflix-red/20 border border-netflix-red/30 rounded flex items-center justify-center">
-                      <span className="text-[9px] text-netflix-red font-bold uppercase tracking-wider">Series Setup</span>
+                      <span className="text-[9px] text-netflix-red font-bold uppercase tracking-wider font-sans">Series Setup</span>
                     </div>
                     <div className="space-y-1.5">
                       <p className="text-[10px] text-white/40 font-bold uppercase">Show Title</p>
@@ -1098,7 +1646,7 @@ export default function RootLandingPage() {
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs font-bold text-white">Drag & Drop Memory.mp4</p>
-                      <p className="text-[9px] text-white/40 font-medium">Secure ticket direct to private S3 Bucket</p>
+                      <p className="text-[9px] text-white/40 font-medium">Secure path direct to private vault</p>
                     </div>
                   </div>
                 )}
@@ -1128,7 +1676,7 @@ export default function RootLandingPage() {
       </section>
 
 
-      {/* 7. NETFLIX-STYLE PREMIUM PLAN PRICE GRID */}
+      {/* 8. NETFLIX-STYLE PREMIUM PLAN PRICE GRID */}
       <section id="pricing" className="py-24 px-6 md:px-16 bg-[#000000] relative z-20 border-t border-white/5">
         <div className="max-w-5xl mx-auto space-y-16">
           
@@ -1157,16 +1705,16 @@ export default function RootLandingPage() {
             {/* Free plan */}
             <div 
               onClick={() => setSelectedPlan("free")}
-              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+              className={`p-6 rounded-tl-[32px] rounded-br-[32px] rounded-tr-[12px] rounded-bl-[12px] cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "free" 
-                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102" 
-                  : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(184,29,36,0.15)] scale-102" 
+                  : "bg-[#141414] border-white/5 hover:border-white/20 text-white/70"
               }`}
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-lg font-bold text-white">Free Tier</h4>
-                  <span className="text-[9px] font-black tracking-widest text-white/40 uppercase bg-white/5 border border-white/10 px-2 py-0.5 rounded">STARTER</span>
+                  <span className="text-[9px] font-black tracking-widest text-white/40 uppercase bg-white/5 border border-white/10 px-2 py-0.5 rounded-tl-[6px] rounded-br-[6px] rounded-tr-[2px] rounded-bl-[2px]">STARTER</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-black text-white">₹0</span>
@@ -1185,7 +1733,7 @@ export default function RootLandingPage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("free"); }}
                   disabled={getPlanButtonDetails("free").disabled}
-                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                  className={`w-full py-3 rounded-tl-[20px] rounded-br-[20px] rounded-tr-[8px] rounded-bl-[8px] font-extrabold text-xs uppercase tracking-widest transition-all ${
                     getPlanButtonDetails("free").classes
                   }`}
                 >
@@ -1201,16 +1749,16 @@ export default function RootLandingPage() {
             {/* Starter plan */}
             <div 
               onClick={() => setSelectedPlan("starter")}
-              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+              className={`p-6 rounded-tl-[32px] rounded-br-[32px] rounded-tr-[12px] rounded-bl-[12px] cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "starter" 
-                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102" 
-                  : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(184,29,36,0.15)] scale-102" 
+                  : "bg-[#141414] border-white/5 hover:border-white/20 text-white/70"
               }`}
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-lg font-bold text-white">Starter Vault</h4>
-                  <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded">POPULAR</span>
+                  <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded-tl-[6px] rounded-br-[6px] rounded-tr-[2px] rounded-bl-[2px]">POPULAR</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-black text-white">₹150</span>
@@ -1229,7 +1777,7 @@ export default function RootLandingPage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("starter"); }}
                   disabled={getPlanButtonDetails("starter").disabled}
-                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                  className={`w-full py-3 rounded-tl-[20px] rounded-br-[20px] rounded-tr-[8px] rounded-bl-[8px] font-extrabold text-xs uppercase tracking-widest transition-all ${
                     getPlanButtonDetails("starter").classes
                   }`}
                 >
@@ -1245,10 +1793,10 @@ export default function RootLandingPage() {
             {/* Standard Family plan (Recommended) */}
             <div 
               onClick={() => setSelectedPlan("family")}
-              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+              className={`p-6 rounded-tl-[32px] rounded-br-[32px] rounded-tr-[12px] rounded-bl-[12px] cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "family" 
-                  ? "bg-black border-netflix-red shadow-[0_12px_40px_rgba(229,9,20,0.3)] scale-105" 
-                  : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                  ? "bg-black border-netflix-red shadow-[0_12px_40px_rgba(184,29,36,0.2)] scale-105" 
+                  : "bg-[#141414] border-white/5 hover:border-white/20 text-white/70"
               }`}
             >
               {/* Popular badge */}
@@ -1259,7 +1807,7 @@ export default function RootLandingPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-lg font-bold text-white">Family Circle</h4>
-                  <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded">PREMIUM</span>
+                  <span className="text-[9px] font-black tracking-widest text-netflix-red uppercase bg-netflix-red/10 border border-netflix-red/20 px-2 py-0.5 rounded-tl-[6px] rounded-br-[6px] rounded-tr-[2px] rounded-bl-[2px]">PREMIUM</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-black text-white">₹250</span>
@@ -1278,7 +1826,7 @@ export default function RootLandingPage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("family"); }}
                   disabled={getPlanButtonDetails("family").disabled}
-                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                  className={`w-full py-3 rounded-tl-[20px] rounded-br-[20px] rounded-tr-[8px] rounded-bl-[8px] font-extrabold text-xs uppercase tracking-widest transition-all ${
                     getPlanButtonDetails("family").classes
                   }`}
                 >
@@ -1294,16 +1842,16 @@ export default function RootLandingPage() {
             {/* Archivist elite plan */}
             <div 
               onClick={() => setSelectedPlan("elite")}
-              className={`p-6 rounded-2xl cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
+              className={`p-6 rounded-tl-[32px] rounded-br-[32px] rounded-tr-[12px] rounded-bl-[12px] cursor-pointer border transition-all duration-300 relative flex flex-col justify-between gap-6 ${
                 selectedPlan === "elite" 
-                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(229,9,20,0.2)] scale-102" 
-                  : "bg-[#181818] border-white/5 hover:border-white/20 text-white/70"
+                  ? "bg-black/60 border-netflix-red shadow-[0_10px_35px_rgba(184,29,36,0.15)] scale-102" 
+                  : "bg-[#141414] border-white/5 hover:border-white/20 text-white/70"
               }`}
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="text-lg font-bold text-white">Archivist Elite</h4>
-                  <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">ELITE</span>
+                  <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-tl-[6px] rounded-br-[6px] rounded-tr-[2px] rounded-bl-[2px]">ELITE</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-black text-white">₹350</span>
@@ -1322,7 +1870,7 @@ export default function RootLandingPage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleCheckout("elite"); }}
                   disabled={getPlanButtonDetails("elite").disabled}
-                  className={`w-full py-3 rounded font-extrabold text-xs uppercase tracking-widest transition-all ${
+                  className={`w-full py-3 rounded-tl-[20px] rounded-br-[20px] rounded-tr-[8px] rounded-bl-[8px] font-extrabold text-xs uppercase tracking-widest transition-all ${
                     getPlanButtonDetails("elite").classes
                   }`}
                 >
@@ -1337,12 +1885,66 @@ export default function RootLandingPage() {
 
           </div>
 
+          {/* Pricing Comparison Feature Grid */}
+          <div className="bg-[#141414]/60 border border-white/10 rounded-tl-[32px] rounded-br-[32px] rounded-tr-[12px] rounded-bl-[12px] p-6 md:p-8 backdrop-blur-md overflow-x-auto">
+            <h3 className="text-lg font-black uppercase text-white mb-6 tracking-wide flex items-center gap-2 select-none"><ShieldCheck className="w-4.5 h-4.5 text-netflix-red" /> Technical Feature Comparison Matrix</h3>
+            
+            <table className="w-full text-left text-xs font-semibold select-none min-w-[500px]">
+              <thead>
+                <tr className="border-b border-white/10 text-white/40 uppercase tracking-wider text-[10px]">
+                  <th className="py-3 pr-4">Features</th>
+                  <th className="py-3 px-4">Free</th>
+                  <th className="py-3 px-4">Starter</th>
+                  <th className="py-3 px-4 text-netflix-red">Family</th>
+                  <th className="py-3 pl-4">Elite</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-white/80">
+                <tr>
+                  <td className="py-4 pr-4 font-bold text-white">Secure Storage Capacity</td>
+                  <td className="py-4 px-4 text-white/50 font-medium">500 MB</td>
+                  <td className="py-4 px-4 text-white/50 font-medium">3 GB</td>
+                  <td className="py-4 px-4 text-netflix-red font-bold">5 GB</td>
+                  <td className="py-4 pl-4 text-white/50 font-medium">7 GB</td>
+                </tr>
+                <tr>
+                  <td className="py-4 pr-4 font-bold text-white">Rapid Parallel Uploads</td>
+                  <td className="py-4 px-4 text-red-500 font-medium">Standard Uploads</td>
+                  <td className="py-4 px-4 text-emerald-400 font-medium">Rapid Uploads</td>
+                  <td className="py-4 px-4 text-netflix-red font-bold">Advanced Parallel Uploads</td>
+                  <td className="py-4 pl-4 text-emerald-400 font-medium">Maximum Speed Parallel Uploads</td>
+                </tr>
+                <tr>
+                  <td className="py-4 pr-4 font-bold text-white">Max Resolution Support</td>
+                  <td className="py-4 px-4 text-white/50 font-medium">720p HD</td>
+                  <td className="py-4 px-4 text-white/50 font-medium">1080p Full HD</td>
+                  <td className="py-4 px-4 text-netflix-red font-bold">4K Ultra HD (HDR)</td>
+                  <td className="py-4 pl-4 text-white/50 font-medium">Lossless Uncompressed 8K</td>
+                </tr>
+                <tr>
+                  <td className="py-4 pr-4 font-bold text-white">Watch Profiles Allowed</td>
+                  <td className="py-4 px-4 text-white/50 font-medium">Up to 2 Profiles</td>
+                  <td className="py-4 px-4 text-white/50 font-medium">Up to 4 Profiles</td>
+                  <td className="py-4 px-4 text-netflix-red font-bold">Up to 6 Profiles (PIN locked)</td>
+                  <td className="py-4 pl-4 text-white/50 font-medium">Unlimited Profiles</td>
+                </tr>
+                <tr>
+                  <td className="py-4 pr-4 font-bold text-white">AES-256 Client-Side Decrypted Playback</td>
+                  <td className="py-4 px-4 text-red-500 font-medium">Standard H.264</td>
+                  <td className="py-4 px-4 text-emerald-400 font-medium">Token Decryption</td>
+                  <td className="py-4 px-4 text-netflix-red font-bold">Real-time Encrypted Decryption</td>
+                  <td className="py-4 pl-4 text-emerald-400 font-medium">Hardware Accelerated Node</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
         </div>
       </section>
 
 
-      {/* 8. AUTHENTIC FAQ ACCORDION SECTION */}
-      <section className="py-24 px-6 md:px-16 bg-[#181818] border-t border-white/5 relative z-20">
+      {/* 9. AUTHENTIC FAQ ACCORDION SECTION */}
+      <section className="py-24 px-6 md:px-16 bg-[#0c0c0c] border-t border-white/5 relative z-20">
         <div className="max-w-4xl mx-auto space-y-16">
           
           <div className="text-center space-y-4">
@@ -1363,7 +1965,7 @@ export default function RootLandingPage() {
               },
               {
                 q: "Is my family's private media secure?",
-                a: "Absolutely. Security is our primary foundation. We generate unique, short-lived presigned upload tickets directly from your browser straight to private, encrypted AWS S3 storage vaults. Nobody but authorized profiles with individual pin access codes can ever decrypt or view the media. Your memories are fully protected and exclusively yours."
+                a: "Absolutely. Security is our primary foundation. We generate unique, temporary secure access keys directly from your browser straight to your private, encrypted storage vault. Nobody but authorized profiles with individual PIN access codes can ever decrypt or view the media. Your memories are fully protected and exclusively yours."
               },
               {
                 q: "How does the 'Show, Season, Episode' structure work?",
@@ -1386,7 +1988,7 @@ export default function RootLandingPage() {
               return (
                 <div 
                   key={idx} 
-                  className="bg-[#2d2d2d] hover:bg-[#353535] border border-white/5 hover:border-white/15 rounded-lg overflow-hidden transition-all duration-200"
+                  className="bg-[#1c1c1c] hover:bg-[#252525] border border-white/5 hover:border-white/15 rounded-lg overflow-hidden transition-all duration-200"
                 >
                   <button
                     onClick={() => setOpenFaq(isOpen ? null : idx)}
@@ -1401,7 +2003,7 @@ export default function RootLandingPage() {
                   {/* Sliding transition container */}
                   <div 
                     className={`transition-all duration-300 ease-in-out overflow-hidden border-t border-black/10 ${
-                      isOpen ? "max-h-[300px] p-6 bg-[#262626]/80 text-white/80" : "max-h-0 py-0"
+                      isOpen ? "max-h-[300px] p-6 bg-black/60 text-white/80" : "max-h-0 py-0"
                     }`}
                   >
                     <p className="text-sm leading-relaxed font-semibold">
@@ -1417,7 +2019,7 @@ export default function RootLandingPage() {
       </section>
 
 
-      {/* 9. BOTTOM FINAL HERO CALL TO ACTION */}
+      {/* 10. BOTTOM FINAL HERO CALL TO ACTION */}
       <section className="py-28 px-6 md:px-16 bg-[#000000] text-center relative overflow-hidden border-t border-white/5 z-20">
         
         {/* Glow backdrop */}
@@ -1442,13 +2044,13 @@ export default function RootLandingPage() {
           </div>
           
           <p className="text-xs text-white/40 font-semibold uppercase tracking-wider">
-            Free Starter Tier includes 10GB secure storage, 2 profiles, 720p streams.
+            Free Starter Tier includes 500MB secure storage, 2 profiles, 720p streams.
           </p>
         </div>
       </section>
 
 
-      {/* 10. MULTI-COLUMN CINEMATIC FOOTER */}
+      {/* 11. MULTI-COLUMN CINEMATIC FOOTER */}
       <footer className="w-full bg-black border-t border-white/5 py-16 px-6 md:px-16 z-25 relative text-white/40 text-xs font-medium">
         <div className="max-w-5xl mx-auto space-y-12">
           
@@ -1465,7 +2067,7 @@ export default function RootLandingPage() {
               <p className="text-[10px] font-black text-white/30 uppercase tracking-widest select-none">Platform Vault</p>
               <ul className="space-y-2">
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Personal Cloud Vault</span></li>
-                <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">AWS Presigned Token Security</span></li>
+                <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Secure Key Encryption</span></li>
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Master PIN Protection</span></li>
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Offline Vault Downloads</span></li>
               </ul>
@@ -1497,7 +2099,7 @@ export default function RootLandingPage() {
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Report Security Incident</span></li>
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Privacy Policy Audit</span></li>
                 <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Collaborator Invite Help</span></li>
-                <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">AWS Custom Bucket Config</span></li>
+                <li><span className="hover:underline hover:text-white cursor-pointer transition-colors">Private Cloud Storage</span></li>
                 <li><span onClick={() => setShowCookieConsentModal(true)} className="hover:underline hover:text-white cursor-pointer transition-colors">Cookie Preferences</span></li>
               </ul>
             </div>
@@ -1513,7 +2115,7 @@ export default function RootLandingPage() {
             </div>
             
             {/* Language dropdown mock */}
-            <div className="border border-white/10 px-4 py-2.5 rounded bg-black/60 text-white/70 font-extrabold text-xs uppercase select-none tracking-widest cursor-pointer hover:border-white/30 transition-colors flex items-center gap-1.5">
+            <div className="border border-white/10 px-4 py-2.5 rounded bg-[#141414] text-white/70 font-extrabold text-xs uppercase select-none tracking-widest cursor-pointer hover:border-white/30 transition-colors flex items-center gap-1.5">
               🌐 English (Vault Standard)
             </div>
           </div>

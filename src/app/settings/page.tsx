@@ -298,7 +298,7 @@ function SettingsPageContent() {
     const isOrphan = file.isOrphaned;
     const displayStr = isOrphan ? `unmatched asset "${file.filename}"` : `memory "${file.displayName}"`;
     const confirmDelete = window.confirm(
-      `Are you sure you want to permanently delete this ${displayStr} from AWS cloud servers? This action cannot be undone.`
+      `Are you sure you want to permanently delete this ${displayStr} from the secure storage servers? This action cannot be undone.`
     );
     if (!confirmDelete) return;
 
@@ -964,7 +964,7 @@ function SettingsPageContent() {
                 {storageLoading && !storageData ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-4">
                     <Loader2 className="w-10 h-10 text-netflix-red animate-spin" />
-                    <p className="text-white/55 text-sm font-semibold tracking-wide">Analyzing your S3 storage footprint...</p>
+                    <p className="text-white/55 text-sm font-semibold tracking-wide">Analyzing your secure storage footprint...</p>
                   </div>
                 ) : storageError ? (
                   <div className="bg-red-950/20 border border-red-500/30 p-6 rounded-lg text-center space-y-4">
@@ -1133,7 +1133,7 @@ function SettingsPageContent() {
                         <ul className="text-xs text-white/55 list-disc list-inside space-y-1 leading-relaxed">
                           <li>Export video files as <strong className="text-white font-semibold">1080p MP4</strong> format to conserve optimal memory storage.</li>
                           <li>Delete unused drafts and temporary cover frames to immediately release cloud storage space.</li>
-                          <li>Deleted memories are purged permanently from both AWS Cloud servers and databases instantly.</li>
+                          <li>Deleted memories are purged permanently from secure storage servers instantly.</li>
                         </ul>
                       </div>
                     </div>

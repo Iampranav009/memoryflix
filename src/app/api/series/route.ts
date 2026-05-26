@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase, mapSeries } from "@/lib/supabase";
 import { verifyAuth } from "@/lib/auth";
+import { s3, BUCKET_NAME } from "@/lib/s3";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 // Helper: Verify that a profile belongs to the user
 async function verifyProfileOwner(profileId: string, userId: string): Promise<boolean> {
@@ -167,7 +169,7 @@ export async function PUT(request: Request) {
   }
 }
 
-// DELETE: delete a series (seasons stay, series_id becomes null)
+// DELETE: delete a series along with all its seasons and episodes (including S3 media)
 export async function DELETE(request: Request) {
   try {
     const { user, errorResponse } = await verifyAuth(request);
@@ -186,12 +188,80 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Forbidden: You do not own this series" }, { status: 403 });
     }
 
-    // Un-assign all seasons from this series before deleting
-    await supabase
+    // 1. Fetch all seasons belonging to this series
+    const { data: seasons, error: seasonsError } = await supabase
       .from("seasons")
-      .update({ series_id: null })
+      .select("id")
       .eq("series_id", id);
 
+    if (seasonsError) throw seasonsError;
+
+    const seasonIds = (seasons || []).map((s: any) => s.id);
+
+    if (seasonIds.length > 0) {
+      // 2. Fetch all episodes in those seasons (to clean up S3)
+      const { data: episodes, error: episodesError } = await supabase
+        .from("episodes")
+        .select("id, media_url")
+        .in("season_id", seasonIds);
+
+      if (episodesError) throw episodesError;
+
+      // 3. Delete S3 media files for each episode (best-effort, non-blocking)
+      for (const ep of episodes || []) {
+        const urlsToDelete: string[] = [];
+        if (ep.media_url) {
+          const raw = ep.media_url as string;
+          if (raw.startsWith("[") || raw.startsWith("{")) {
+            try {
+              const parsed = JSON.parse(raw);
+              const variants = Array.isArray(parsed) ? parsed : [parsed];
+              for (const v of variants) {
+                if (v.low) urlsToDelete.push(v.low);
+                if (v.medium) urlsToDelete.push(v.medium);
+                if (v.high) urlsToDelete.push(v.high);
+                if (v.url) urlsToDelete.push(v.url);
+              }
+            } catch {
+              urlsToDelete.push(raw);
+            }
+          } else {
+            urlsToDelete.push(raw);
+          }
+        }
+
+        for (const url of urlsToDelete) {
+          if (url && url.includes(".amazonaws.com/")) {
+            try {
+              const fileKey = url.split(".amazonaws.com/")[1];
+              if (fileKey) {
+                await s3.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: fileKey }));
+              }
+            } catch (s3Err) {
+              console.error(`Series delete: failed to remove S3 file ${url}:`, s3Err);
+            }
+          }
+        }
+      }
+
+      // 4. Delete all episodes in those seasons
+      const { error: deleteEpisodesError } = await supabase
+        .from("episodes")
+        .delete()
+        .in("season_id", seasonIds);
+
+      if (deleteEpisodesError) throw deleteEpisodesError;
+
+      // 5. Delete all seasons
+      const { error: deleteSeasonsError } = await supabase
+        .from("seasons")
+        .delete()
+        .in("id", seasonIds);
+
+      if (deleteSeasonsError) throw deleteSeasonsError;
+    }
+
+    // 6. Delete the series itself
     const { error } = await supabase.from("series").delete().eq("id", id);
     if (error) throw error;
 

@@ -205,11 +205,11 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
       console.error("Error loading season details:", err);
       setErrorDetails({
         title: "Load Collection Failed",
-        message: err.message || "Could not retrieve collection details from database.",
+        message: err.message || "Could not retrieve collection details from your storage.",
         troubleshooting: [
-          "Verify that your Supabase instance is running and has the required schema.",
-          "Check your network connection.",
-          "Confirm that this season ID is valid for the active profile."
+          "Check your network connection and try again.",
+          "Confirm that this collection is valid for the active profile.",
+          "Reload the page to refresh your connection."
         ]
       });
     } finally {
@@ -277,8 +277,8 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
         title: "Collection Edit Failed",
         message: err.message || "Failed to update collection properties.",
         troubleshooting: [
-          "Verify the connection to Supabase and database tables.",
-          "Check that your internet connection is active."
+          "Check that your internet connection is active.",
+          "Refresh your page and try again."
         ]
       });
     } finally {
@@ -387,8 +387,8 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
         title: "Chapter Edit Failed",
         message: err.message || "Failed to update chapter properties.",
         troubleshooting: [
-          "Verify the connection to Supabase and database tables.",
-          "Check that your internet connection is active."
+          "Check that your internet connection is active.",
+          "Refresh your page and try again."
         ]
       });
     } finally {
@@ -637,29 +637,28 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
       console.error("Upload error:", err);
       
       let errorTitle = "Memory Upload Failed";
-      let errorMessage = err.message || "An unexpected error occurred during direct upload to S3.";
+      let errorMessage = err.message || "An unexpected error occurred during upload to your secure vault.";
       let suggestions = [
-        "Ensure your AWS IAM user has PutObject permissions on the bucket.",
-        "Verify your .env file has valid AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.",
-        "Check that the AWS_REGION matches your bucket's physical location."
+        "Check your internet connection and try again.",
+        "Verify that the file format is supported (video or photo).",
+        "Try a smaller file size or reload the page."
       ];
 
       if (err.response && err.response.status === 403 && err.response.data?.error === "LIMIT_EXCEEDED") {
         errorTitle = "Storage Limit Reached";
         errorMessage = err.response.data.message || "Your 50 GB storage capacity has been exceeded.";
         suggestions = [
-          "Go to Account Settings -> Storage Vault to view your space allocation.",
-          "Delete older episodes or large files to reclaim storage immediately.",
-          "Verify if the file you're uploading is unnecessarily large."
+          "Go to Account Settings to view your space allocation.",
+          "Delete older files or large segments to reclaim storage space.",
+          "Ensure the uploaded file is optimized for streaming."
         ];
       } else if (err.message?.includes("Network Error") || err.code === "ERR_NETWORK" || !err.response) {
-        errorTitle = "S3 Connection Blocked (CORS)";
-        errorMessage = "A client-side Axios Network Error was caught during upload to AWS S3.";
+        errorTitle = "Connection Interrupted";
+        errorMessage = "A network error occurred while establishing a secure connection to the upload vault.";
         suggestions = [
-          "AWS S3 rejected the direct pre-signed PUT request because of missing or misconfigured CORS policies.",
-          "SOLUTION: Go to AWS S3 Console -> memory-netflix bucket -> Permissions tab -> scroll to CORS at the very bottom -> Paste the CORS JSON array allowing AllowedMethods: [PUT, POST, GET, HEAD] and AllowedOrigins: [*].",
-          "Ensure S3 Block Public Access is disabled on the bucket settings if you want anonymous reads.",
-          "Check that your internet connection is active."
+          "Check your internet connection or try connecting to a different network.",
+          "Ensure your browser allows file uploads and isn't blocking the connection.",
+          "Try again in a few moments, or contact support if the issue persists."
         ];
       }
 
@@ -763,11 +762,11 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
         setEditMediaUploading(false);
         setErrorDetails({
           title: "File Upload Failed",
-          message: err.message || "Failed to upload new segment videos to S3 Vault.",
+          message: err.message || "Failed to upload new segment videos to your secure vault.",
           troubleshooting: [
-            "Verify your S3 Vault credentials and policies.",
-            "Check that your internet connection is fast and stable.",
-            "Confirm that video size does not exceed the limit."
+            "Ensure your internet connection is active and stable.",
+            "Confirm that video size does not exceed the allowed limit.",
+            "Refresh the page and try the upload again."
           ]
         });
       }
@@ -804,10 +803,10 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
       console.error("Error saving episode order:", err);
       setErrorDetails({
         title: "Reorder Sync Failed",
-        message: err.message || "Could not synchronize the new episode rank order to Supabase.",
+        message: err.message || "Could not synchronize the new chapter rank order.",
         troubleshooting: [
-          "Check if your Supabase schema has Row-Level Security (RLS) enabled that blocks UPDATEs.",
-          "Confirm your session is valid and the backend connection is stable."
+          "Confirm your session is valid and the connection is stable.",
+          "Check your internet connection and try reloading."
         ]
       });
       // Rollback to original details
@@ -841,10 +840,10 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
       console.error("Error saving episode order:", err);
       setErrorDetails({
         title: "Reorder Sync Failed",
-        message: err.message || "Could not synchronize the new episode rank order to Supabase.",
+        message: err.message || "Could not synchronize the new chapter rank order.",
         troubleshooting: [
-          "Check if your Supabase schema has Row-Level Security (RLS) enabled that blocks UPDATEs.",
-          "Confirm your session is valid and the backend connection is stable."
+          "Confirm your session is valid and the connection is stable.",
+          "Check your internet connection and try reloading."
         ]
       });
       // Rollback to original details
@@ -873,10 +872,10 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
       console.error("Error deleting episode:", err);
       setErrorDetails({
         title: "Delete Memory Failed",
-        message: err.message || "Could not delete episode from Supabase database or clean up associated S3 media file.",
+        message: err.message || "Could not delete chapter from your memory library or secure storage.",
         troubleshooting: [
-          "Ensure your AWS credentials have delete permissions for S3 objects.",
-          "Verify the connection to Supabase DB has not timed out."
+          "Ensure your internet connection is active.",
+          "Verify that your session is still valid, or reload and try again."
         ]
       });
     }
@@ -1687,8 +1686,6 @@ export default function SeasonDetailPage({ params }: { params: Promise<{ id: str
       {errorDetails && (
         <div className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
           <div className="w-full max-w-[550px] bg-[#181818] border border-red-600/30 rounded-lg p-6 md:p-8 relative shadow-2xl animate-zoom-in">
-            {/* Red accent line top */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#E50914] rounded-t-lg"></div>
 
             {/* Header */}
             <div className="flex items-start gap-4 mb-4 mt-2">

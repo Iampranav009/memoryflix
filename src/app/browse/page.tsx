@@ -57,10 +57,12 @@ export default function BrowsePage() {
     if (!activeProfile) return;
     setLoading(true);
     try {
-      const res = await axios.get(`/api/browse?profileId=${activeProfile.id}`);
+      // Run both fetches in parallel — no need to wait for one before starting the other
+      const [res, seriesRes] = await Promise.all([
+        axios.get(`/api/browse?profileId=${activeProfile.id}`),
+        axios.get(`/api/series?profileId=${activeProfile.id}`),
+      ]);
       setData(res.data);
-      
-      const seriesRes = await axios.get(`/api/series?profileId=${activeProfile.id}`);
       setSeriesList(seriesRes.data || []);
     } catch (err) {
       console.error("Error fetching browse dashboard:", err);
@@ -513,8 +515,7 @@ export default function BrowsePage() {
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-[480px] bg-[#181818] rounded-xl border border-white/10 p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-zoom-in text-white"
           >
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#E50914] rounded-t-xl"></div>
-            
+
             <button
               onClick={handleRemindLater}
               className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all cursor-pointer"

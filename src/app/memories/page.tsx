@@ -61,6 +61,10 @@ export default function MemoriesPage() {
   const [editSeriesAssignedIds, setEditSeriesAssignedIds] = useState<Set<string>>(new Set());
   const [savingSeries, setSavingSeries] = useState(false);
 
+  // Delete series confirmation modal
+  const [deleteSeriesTarget, setDeleteSeriesTarget] = useState<DbSeries | null>(null);
+  const [deletingSeriesId, setDeletingSeriesId] = useState<string | null>(null);
+
   // Search & Filtering
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "title">("newest");
@@ -85,6 +89,10 @@ export default function MemoriesPage() {
   const [editFeatured, setEditFeatured] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Delete collection (season) confirmation modal
+  const [deleteSeasonTarget, setDeleteSeasonTarget] = useState<DbSeason | null>(null);
+  const [deletingSeasonId, setDeletingSeasonId] = useState<string | null>(null);
+
   // Premium Error states
   const [errorDetails, setErrorDetails] = useState<{
     title: string;
@@ -104,8 +112,8 @@ export default function MemoriesPage() {
         title: "Load Collections Failed",
         message: err.message || "Failed to load collections for the active profile.",
         troubleshooting: [
-          "Check that your Supabase connection string is valid.",
-          "Verify that the 'seasons' table has been created in your Supabase DB."
+          "Check your internet connection and try again.",
+          "Ensure your profile permissions are active."
         ]
       });
     } finally {
@@ -182,10 +190,10 @@ export default function MemoriesPage() {
       console.error("Error creating season:", err);
       setErrorDetails({
         title: "Collection Creation Failed",
-        message: err.message || "Failed to save the new collection to Supabase.",
+        message: err.message || "Failed to save the new collection.",
         troubleshooting: [
-          "Verify the connection to Supabase and ensure RLS policies allow insertion on 'seasons' table.",
-          "Check that your internet connection is active."
+          "Check that your internet connection is active.",
+          "Ensure you have sufficient storage space."
         ]
       });
     } finally {
@@ -259,8 +267,8 @@ export default function MemoriesPage() {
         title: "Collection Edit Failed",
         message: err.message || "Failed to update collection properties.",
         troubleshooting: [
-          "Verify the connection to Supabase and database tables.",
-          "Check that your internet connection is active."
+          "Check that your internet connection is active.",
+          "Refresh your page and try again."
         ]
       });
     } finally {
@@ -363,18 +371,51 @@ export default function MemoriesPage() {
     }
   };
 
-  const handleDeleteSeries = async (seriesId: string, title: string) => {
-    if (!window.confirm(`Delete series "${title}"? All grouped collections will remain, just un-grouped.`)) return;
+  const handleDeleteSeason = (season: DbSeason) => {
+    setDeleteSeasonTarget(season);
+  };
+
+  const confirmDeleteSeason = async () => {
+    if (!deleteSeasonTarget) return;
+    const seasonId = deleteSeasonTarget.id;
+    setDeletingSeasonId(seasonId);
+    try {
+      await axios.delete(`/api/seasons?id=${seasonId}`);
+      setSeasons(prev => prev.filter(s => s.id !== seasonId));
+      setDeleteSeasonTarget(null);
+    } catch (err: any) {
+      console.error("Error deleting collection:", err);
+      setErrorDetails({
+        title: "Delete Collection Failed",
+        message: err.message || "Could not delete collection.",
+      });
+    } finally {
+      setDeletingSeasonId(null);
+    }
+  };
+
+  const handleDeleteSeries = async (series: DbSeries) => {
+    setDeleteSeriesTarget(series);
+  };
+
+  const confirmDeleteSeries = async () => {
+    if (!deleteSeriesTarget) return;
+    const seriesId = deleteSeriesTarget.id;
+    setDeletingSeriesId(seriesId);
     try {
       await axios.delete(`/api/series?id=${seriesId}`);
       setSeriesList(prev => prev.filter(s => s.id !== seriesId));
-      setSeasons(prev => prev.map(s => s.seriesId === seriesId ? { ...s, seriesId: null } : s));
+      // Remove all seasons that belonged to this series from local state too
+      setSeasons(prev => prev.filter(s => s.seriesId !== seriesId));
+      setDeleteSeriesTarget(null);
     } catch (err: any) {
       console.error("Error deleting series:", err);
       setErrorDetails({
         title: "Delete Series Failed",
         message: err.message || "Could not delete series.",
       });
+    } finally {
+      setDeletingSeriesId(null);
     }
   };
 
@@ -622,6 +663,21 @@ export default function MemoriesPage() {
                         <Edit className="w-3.5 h-3.5" />
                       </button>
 
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSeason(season);
+                        }}
+                        disabled={deletingSeasonId === season.id}
+                        className="absolute top-2.5 left-2.5 p-1.5 rounded-full bg-black/70 hover:bg-red-900/80 text-white/50 hover:text-red-400 border border-white/10 hover:border-red-500/40 transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 z-20 cursor-pointer shadow flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Delete Collection"
+                      >
+                        {deletingSeasonId === season.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+
                       {/* Episode Count indicator tag */}
                       <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-widest bg-black/80 text-white/90 border border-white/10 z-10 flex items-center gap-1.5 shadow">
                         <Film className="w-3.5 h-3.5 text-[#E50914]" />
@@ -721,12 +777,15 @@ export default function MemoriesPage() {
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDeleteSeries(series.id, series.title)}
-                            className="p-1.5 rounded bg-zinc-800 hover:bg-red-900/60 text-white/40 hover:text-red-400 border border-white/10 hover:border-red-500/30 cursor-pointer transition-all"
-                            title="Delete Series"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                             onClick={() => handleDeleteSeries(series)}
+                             disabled={deletingSeriesId === series.id}
+                             className="p-1.5 rounded bg-zinc-800 hover:bg-red-900/60 text-white/40 hover:text-red-400 border border-white/10 hover:border-red-500/30 cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                             title="Delete Series"
+                           >
+                             {deletingSeriesId === series.id
+                               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                               : <Trash2 className="w-3.5 h-3.5" />}
+                           </button>
                         </div>
                       </div>
 
@@ -1365,13 +1424,178 @@ export default function MemoriesPage() {
         </div>
       )}
 
+      {/* DELETE COLLECTION CONFIRMATION MODAL */}
+      {deleteSeasonTarget && (
+        <div className="fixed inset-0 z-[90] bg-black/85 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-[460px] bg-[#181818] border border-red-600/30 rounded-lg p-6 md:p-8 relative shadow-2xl animate-zoom-in">
+
+            {/* Close button */}
+            <button
+              onClick={() => !deletingSeasonId && setDeleteSeasonTarget(null)}
+              disabled={!!deletingSeasonId}
+              className="absolute top-4 right-4 text-white/40 hover:text-white cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Icon + Header */}
+            <div className="flex items-start gap-4 mb-5">
+              <div className="p-3 bg-red-500/10 rounded-full border border-red-500/20 flex-shrink-0">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-xl font-extrabold text-white uppercase tracking-wide">
+                  Delete Collection
+                </h3>
+                <p className="text-white/40 text-xs mt-0.5 font-medium">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {/* Collection info */}
+            <div className="bg-black/40 border border-white/5 rounded-lg p-4 mb-5 space-y-2">
+              <div className="flex items-center gap-3">
+                <img
+                  src={deleteSeasonTarget.thumbnailUrl || "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=120"}
+                  alt={deleteSeasonTarget.title}
+                  className="w-16 aspect-video rounded object-cover border border-white/10 flex-shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="text-white font-bold text-sm truncate uppercase tracking-wide">
+                    {deleteSeasonTarget.title}
+                  </p>
+                  {deleteSeasonTarget.description && (
+                    <p className="text-white/40 text-xs line-clamp-1 mt-0.5">{deleteSeasonTarget.description}</p>
+                  )}
+                  <p className="text-white/30 text-[10px] mt-1 font-bold uppercase tracking-wider">
+                    {(deleteSeasonTarget.episodes || []).length} episode{(deleteSeasonTarget.episodes || []).length !== 1 ? "s" : ""} will be deleted
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning banner */}
+            <div className="flex items-start gap-2.5 bg-red-950/30 border border-red-600/25 rounded p-3 mb-6">
+              <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-red-300/80 text-xs leading-relaxed">
+                Deleting this collection will permanently remove all its episodes and uploaded media files. This cannot be recovered.
+              </p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-3 justify-end">
+              <button
+                onClick={() => setDeleteSeasonTarget(null)}
+                disabled={!!deletingSeasonId}
+                className="px-5 py-2.5 border border-white/20 text-white/60 hover:border-white/40 hover:text-white rounded transition-colors text-sm font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSeason}
+                disabled={!!deletingSeasonId}
+                className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-zinc-800 disabled:text-white/40 text-white font-bold rounded transition-all text-sm cursor-pointer disabled:cursor-not-allowed shadow-lg flex items-center gap-2 active:scale-95"
+              >
+                {deletingSeasonId ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Yes, Delete Collection
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE SERIES CONFIRMATION MODAL */}
+      {deleteSeriesTarget && (
+        <div className="fixed inset-0 z-[90] bg-black/85 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-[460px] bg-[#181818] border border-red-600/30 rounded-lg p-6 md:p-8 relative shadow-2xl animate-zoom-in">
+
+            {/* Close button */}
+            <button
+              onClick={() => !deletingSeriesId && setDeleteSeriesTarget(null)}
+              disabled={!!deletingSeriesId}
+              className="absolute top-4 right-4 text-white/40 hover:text-white cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Icon + Header */}
+            <div className="flex items-start gap-4 mb-5">
+              <div className="p-3 bg-red-500/10 rounded-full border border-red-500/20 flex-shrink-0">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-xl font-extrabold text-white uppercase tracking-wide">
+                  Delete Series
+                </h3>
+                <p className="text-white/40 text-xs mt-0.5 font-medium">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {/* Series info */}
+            <div className="bg-black/40 border border-white/5 rounded-lg p-4 mb-5 space-y-1">
+              <p className="text-white font-bold text-sm truncate">
+                &ldquo;{deleteSeriesTarget.title}&rdquo;
+              </p>
+              {deleteSeriesTarget.description && (
+                <p className="text-white/40 text-xs line-clamp-2">{deleteSeriesTarget.description}</p>
+              )}
+              <p className="text-white/30 text-[10px] pt-1">
+                {seasons.filter(s => s.seriesId === deleteSeriesTarget.id).length} collection(s) &amp; all their episodes will be permanently deleted.
+              </p>
+            </div>
+
+            {/* Warning */}
+            <div className="flex items-start gap-2.5 bg-red-950/30 border border-red-600/25 rounded p-3 mb-6">
+              <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-red-300/80 text-xs leading-relaxed">
+                Deleting this series will permanently remove all associated collections and every episode inside them, including all uploaded media files. This cannot be recovered.
+              </p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-3 justify-end">
+              <button
+                onClick={() => setDeleteSeriesTarget(null)}
+                disabled={!!deletingSeriesId}
+                className="px-5 py-2.5 border border-white/20 text-white/60 hover:border-white/40 hover:text-white rounded transition-colors text-sm font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSeries}
+                disabled={!!deletingSeriesId}
+                className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-zinc-800 disabled:text-white/40 text-white font-bold rounded transition-all text-sm cursor-pointer disabled:cursor-not-allowed shadow-lg flex items-center gap-2 active:scale-95"
+              >
+                {deletingSeriesId ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Yes, Delete Series
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PREMIUM INTERACTIVE ERROR OVERLAY */}
 
       {errorDetails && (
         <div className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
           <div className="w-full max-w-[550px] bg-[#181818] border border-red-600/30 rounded-lg p-6 md:p-8 relative shadow-2xl animate-zoom-in">
-            {/* Red accent line top */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#E50914] rounded-t-lg"></div>
 
             {/* Header */}
             <div className="flex items-start gap-4 mb-4 mt-2">

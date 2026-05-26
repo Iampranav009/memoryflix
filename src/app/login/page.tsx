@@ -25,7 +25,7 @@ export default function LoginPage() {
       const redirectParam = searchParams.get("redirect");
       const planParam = searchParams.get("plan");
       
-      let redirectTo = `${window.location.origin}/browse`;
+      let redirectTo = `${window.location.origin}/profiles`;
       if (redirectParam === "checkout" && planParam) {
         redirectTo = `${window.location.origin}/?redirect=checkout&plan=${planParam}`;
       }

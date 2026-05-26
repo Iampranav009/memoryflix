@@ -394,9 +394,6 @@ export default function InfoModal() {
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-[480px] bg-[#181818] rounded-xl border border-white/10 p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-zoom-in"
           >
-            {/* Crimson accent line top */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#E50914] rounded-t-xl"></div>
-            
             <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
               <h3 className="text-lg font-black uppercase tracking-wider text-white">Share Memory Collection</h3>
               <button 
